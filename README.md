@@ -52,7 +52,7 @@ New to it? A short tour opens the first time you load the page (replay it with *
 | Path | What |
 |---|---|
 | `index.html` | The Lab. Built from v3 by `tools/patch_v5.py`; do not edit by hand. |
-| `tools/` | `patch_v5.py` + `v5_additions.js` + `guide.js` (tour, demo) + `launch.js` (one-click launch) + `verify.js` (page 9) + `summary.js` (plain-English results): everything v5 adds to v3. Rebuild with `python tools/patch_v5.py index.html` |
+| `tools/` | `patch_v5.py` + `v5_additions.js` + `guide.js` (tour, demo) + `launch.js` (one-click launch) + `verify.js` (page 9) + `summary.js` (plain-English results) + `helper.js` (product-finder models) + `v54_run.js` (validation panel, cut-off answers, keys first): everything v5 adds to v3. Rebuild with `python tools/patch_v5.py index.html` |
 | `tests/` | Parameter recovery, consistency (same input → same output) and verification-pack tests |
 | `verify/` | `verify.py` and `verify.R`, the outside-the-tool checks (also bundled into every verification pack) |
 | `examples/` | A finished demo run's verification pack, with the Python and R reports it should produce |

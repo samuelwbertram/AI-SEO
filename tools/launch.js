@@ -33,7 +33,7 @@ async function launchStudy() {
       else log('▶ Launch 2/5 · Validation already passed for every model.');
       if (globalStop) return log('■ Launch stopped.');
       const bad = units().filter(u => u.m.provider !== 'import').filter(u => { const v = resOf(u).validation; return !v || !v.n || v.hit !== v.n; });
-      if (bad.length && !confirmV5(`${bad.map(u => `${u.label}: ${resOf(u).validation?.hit ?? 0}/${resOf(u).validation?.n ?? 0}`).join('\n')}\n\nThese models did not pick the best product every time in the validation check. Carry on with the run anyway?`))
+      if (bad.length && !confirmV5(`${bad.map(u => `${u.label}: ${resOf(u).validation?.hit ?? 0}/${resOf(u).validation?.n ?? 0}`).join('\n')}\n\nThese models did not pick the best product every time in the validation check. Each answer, and why it missed, is in the Validation check panel on the Run page (Cancel to look first).\n\nCarry on with the run anyway?`))
         return log('■ Launch stopped after the validation check. See the log for each model.'); }
 
     // 3. Pilot.

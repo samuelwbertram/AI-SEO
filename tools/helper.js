@@ -15,7 +15,7 @@ function helperChoice() { const st = S.settings, model = (st.assistModel || '').
 function renderHelperSelect() { const sel = $('assistSel'); if (!sel) return;
   const have = p => !!(keys[p] || '').trim(), list = HELPER_MODELS.filter(h => have(h.provider)), cur = helperChoice();
   let opts = list.map(h => [`${h.provider}|${h.model}`, h.label]);
-  if (!list.length && !have('openrouter')) { sel.innerHTML = '<option value="">Add an API key on page 4 first</option>'; sel.disabled = true; $('assistModel').style.display = 'none'; ['findGo', 'linkGo', 'textGo'].forEach(id => { if ($(id)) $(id).disabled = true; }); return; }
+  if (!list.length && !have('openrouter')) { sel.innerHTML = '<option value="">Add an API key on page 1 first</option>'; sel.disabled = true; $('assistModel').style.display = 'none'; ['findGo', 'linkGo', 'textGo'].forEach(id => { if ($(id)) $(id).disabled = true; }); return; }
   sel.disabled = false; ['findGo', 'linkGo', 'textGo'].forEach(id => { if ($(id)) $(id).disabled = false; });
   opts.push(['other|', have('openrouter') ? 'Other model… (type its ID; OpenRouter IDs have a slash)' : 'Other model… (type its ID)']);
   sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
@@ -36,30 +36,30 @@ async function helperCallV54(prompt, web) {
   const { model, provider } = helperChoice();
   if (!model) throw new Error('Pick a helper model first.');
   if (!provider) throw new Error(`Can't tell which provider "${model}" belongs to. Pick a model from the list, or use an OpenRouter ID with a slash.`);
-  const key = (keys[provider] || '').trim(); if (!key) throw new Error(`Add your ${PROVIDER_NAME[provider]} key on page 4 first (the product finder uses ${model}).`);
+  const key = (keys[provider] || '').trim(); if (!key) throw new Error(`Add your ${PROVIDER_NAME[provider]} key on page 1 first (the product finder uses ${model}).`);
   if (provider === 'anthropic') {
     const messages = [{ role: 'user', content: prompt }], body = { model, max_tokens: 8000, messages };
     if (web) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }];
     let text = '';
     for (let turn = 0; turn < 4; turn++) {   // web search can pause a long turn; send it back to carry on
-      const j = await httpJSON(PROV.anthropic + '/messages', { method: 'POST', headers: anthHeaders(), body: JSON.stringify(body) });
+      const j = await httpJSON(PROV.anthropic + '/messages', { method: 'POST', signal: helperAbort?.signal, headers: anthHeaders(), body: JSON.stringify(body) });
       text += (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
       if (j.stop_reason !== 'pause_turn') break;
       messages.push({ role: 'assistant', content: j.content }); }
     return text; }
   if (provider === 'openai') {   // Responses API; web search is the built-in web_search tool
     const body = { model, input: prompt, max_output_tokens: 8000 }; if (web) body.tools = [{ type: 'web_search' }];
-    const j = await httpJSON(PROV.openai + '/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
+    const j = await httpJSON(PROV.openai + '/responses', { method: 'POST', signal: helperAbort?.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
     if (typeof j.output_text === 'string' && j.output_text) return j.output_text;
     return (j.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text' || c.text).map(c => c.text || '').join(''); }
   if (provider === 'google') {   // generateContent; web search is Grounding with Google Search
     const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 8000 } }; if (web) body.tools = [{ google_search: {} }];
-    const j = await httpJSON(`${PROV.google}/models/${encodeURIComponent(model.replace(/^models\//, ''))}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await httpJSON(`${PROV.google}/models/${encodeURIComponent(model.replace(/^models\//, ''))}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', signal: helperAbort?.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return (j.candidates?.[0]?.content?.parts || []).filter(p => !p.thought && p.text).map(p => p.text).join(''); }
   // OpenRouter: any model ID with a slash
   const body = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 6000 };
   if (web) body.tools = [{ type: 'openrouter:web_search' }];
   const h = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'X-Title': 'LLM Conjoint Lab' };
-  let j; try { j = await httpJSON(PROV.openrouter + '/chat/completions', { method: 'POST', headers: h, body: JSON.stringify(body) }); }
-  catch (e) { if (!web) throw e; delete body.tools; body.model = model + ':online'; j = await httpJSON(PROV.openrouter + '/chat/completions', { method: 'POST', headers: h, body: JSON.stringify(body) }); }
+  let j; try { j = await httpJSON(PROV.openrouter + '/chat/completions', { method: 'POST', signal: helperAbort?.signal, headers: h, body: JSON.stringify(body) }); }
+  catch (e) { if (!web) throw e; delete body.tools; body.model = model + ':online'; j = await httpJSON(PROV.openrouter + '/chat/completions', { method: 'POST', signal: helperAbort?.signal, headers: h, body: JSON.stringify(body) }); }
   const m = j.choices?.[0]?.message; return typeof m?.content === 'string' ? m.content : (m?.content || []).map(p => p.text || '').join(''); }

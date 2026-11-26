@@ -143,7 +143,7 @@ s = rep(s, """<button class="b sec" id="clearAll">Clear all results</button></di
     <p class="hint" id="spendLine"></p>""")
 s = rep(s, """      <label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" id="reask"> Re-ask once if unclear</label>""",
         """      <label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" id="reask"> Re-ask once if unclear</label>
-      <label>Reasoning effort <span class="info" data-tip="For models that think before answering (OpenRouter models, and OpenAI GPT-5/GPT-6/o-series models). Low keeps cost down; blank sends nothing and uses each model's default.">i</span> <select id="reasoning"><option value="">model default</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
+      <label>Reasoning effort <span class="info" data-tip="For models that think before answering (OpenRouter models, OpenAI GPT-5/GPT-6/o-series models, and Gemini 2.5 and later, where thinking also counts toward the answer length limit). Low keeps cost down; blank sends nothing and uses each model's default.">i</span> <select id="reasoning"><option value="">model default</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
       <label>Spend cap, US$ <span class="info" data-tip="The run pauses when total spend reaches this amount. Raise it and press Resume to carry on. 0 = no cap. OpenRouter reports cost per call; for direct OpenAI, Anthropic and Google calls the Lab counts tokens × each model's list price (set in the Study 3 lineup).">i</span> <input id="spendCap" type="number" min="0" step="1" style="width:90px"></label>""")
 
 # ---------------------------------------------------------------- storefront page: cards wide enough for their longest line
@@ -163,6 +163,7 @@ root = Path(__file__).resolve().parent.parent
 guide_code += "\nconst VERIFY_PY = " + json.dumps((root / 'verify' / 'verify.py').read_text(encoding='utf-8')) + ";"
 guide_code += "\nconst VERIFY_R = " + json.dumps((root / 'verify' / 'verify.R').read_text(encoding='utf-8')) + ";\n"
 guide_code += (Path(__file__).parent / 'verify.js').read_text(encoding='utf-8')  # page 9: verification pack
+guide_code += "\n" + (Path(__file__).parent / 'v54_run.js').read_text(encoding='utf-8')  # v5.4: validation panel, cut-off answers, finder progress, keys first
 guide_code += "\n" + (Path(__file__).parent / 'helper.js').read_text(encoding='utf-8')  # v5.4: helper model dropdown
 guide_code += "\n" + (Path(__file__).parent / 'summary.js').read_text(encoding='utf-8')  # v5.4: plain-English results summary
 marker = "(async () => { await IDB.open();"
@@ -192,8 +193,28 @@ new_helper = """async function helperCall(prompt, web) { return helperCallV54(pr
 s = s.replace(old_helper, new_helper)
 s = s.replace("Uses your OpenRouter key and the helper model below (web search adds a small cost per search).",
         "<b>Optional, uses AI:</b> pick the helper model below from the providers you have keys for (Claude, GPT or Gemini, each with web search; searches add a small cost). Only for setting up products; it is never used for the conjoint, storefront or analysis. Check every value against its source link before you run.")
+# ---------------------------------------------------------------- v5.4: answers cut off by the length limit are detected and re-asked
+s = rep(s, "let text = '', inTok = null, outTok = null, cost = null, served = m.model, args = null;", "let text = '', inTok = null, outTok = null, cost = null, served = m.model, args = null, truncated = false;")
+s = rep(s, "body.max_completion_tokens = maxT;", "body.max_completion_tokens = /^(gpt-5|gpt-6|o\\d)/.test(m.model) ? Math.max(maxT, 8192) : maxT;")
+s = rep(s, "    const mc = j.choices?.[0]?.message;", "    const mc = j.choices?.[0]?.message; truncated = j.choices?.[0]?.finish_reason === 'length';")
+s = rep(s, "text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); inTok = j.usage?.input_tokens ?? null;", "text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); truncated = j.stop_reason === 'max_tokens'; inTok = j.usage?.input_tokens ?? null;")
+s = rep(s, "const body = { contents: [{ role: 'user', parts }], generationConfig: { maxOutputTokens: maxT } };", "const body = { contents: [{ role: 'user', parts }], generationConfig: { maxOutputTokens: Math.max(maxT, 8192) } }; const tc = geminiThinking(m.model); if (tc) body.generationConfig.thinkingConfig = tc;")
+s = rep(s, "const j = await httpJSON(`${PROV.google}/models/${encodeURIComponent(m.model.replace(/^models\\//, ''))}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });",
+        "const j = await googleGenerate(`${PROV.google}/models/${encodeURIComponent(m.model.replace(/^models\\//, ''))}:generateContent?key=${encodeURIComponent(key)}`, body); truncated = j.candidates?.[0]?.finishReason === 'MAX_TOKENS';")
+s = rep(s, "  return { text, args, inTok, outTok, cost, served, ms: Math.round(performance.now() - t0) };", "  return { text, args, inTok, outTok, cost, served, truncated, ms: Math.round(performance.now() - t0) };")
+# main storefront trials: re-ask once when no choice can be read
+s = rep(s, "  const res = await callRetry(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl);\n  const pc = E.parseChoiceName(res.text, names); let mis = null, detail = '';",
+        "  const { res, pc, raw2, cut, cost } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);\n  let mis = null, detail = '';")
+s = rep(s, "misread_detail: detail, raw: res.text, served: res.served, cost: res.cost, at: new Date().toISOString() }; return !!pc.choice; }",
+        "misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, at: new Date().toISOString() }; return !!pc.choice; }")
+s = rep(s, "Raw: v.raw, Served: v.served, Cost: v.cost ?? '',", "Raw: v.raw, ReAskAnswer: v.raw2 ?? '', CutOff: v.cut ? 1 : 0, Served: v.served, Cost: v.cost ?? '',")
+# validation panel on the Run page, and in Export
+s = rep(s, '<div class="log" id="runLog" style="margin-top:12px"></div>\n  </div>', '<div class="log" id="runLog" style="margin-top:12px"></div>\n  </div>\n  <div class="card" id="valPanel"></div>')
+s = rep(s, "['spss', 'SPSS syntax'],", "['validation', 'Validation check (every answer)'], ['spss', 'SPSS syntax'],")
+s = rep(s, "  if (k === 'study') return", "  if (k === 'validation') return valRows();\n  if (k === 'study') return")
+s = rep(s, "throw new ApiError(`No ${m.provider} key (page 4).`, 0, false)", "throw new ApiError(`No ${m.provider} key (enter it on page 1).`, 0, false)")
 # older saved projects still carry the old default helper; move them to the new one
-s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); initHelperSelect(); verifyInit();")
+s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); initHelperSelect(); initV54(); verifyInit();")
 
 out_path.write_text(s, encoding='utf-8')
 print('written', out_path, len(s))
