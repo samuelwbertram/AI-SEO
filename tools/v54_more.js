@@ -112,3 +112,15 @@ function predCheckHTML(a) { const c = predCheck(a); if (!c) return '';
 function predCheckRows() { const out = []; expUnits().forEach(u => { const c = predCheck(S.fits[u.key]); if (!c) return;
   out.push({ Run: u.label, Row: 'Summary', StorefrontTrials: c.trials, PredictedFavourite: c.topPred.product, MostPicked: c.topActual.product, FavouriteWasMostPicked: c.topHit ? 1 : 0, Top3Overlap: c.top3, ExactRankMatches: c.exact, WithinOneRank: c.near, Products: c.K, PredictedLast: c.lastPred.product, PredictedLastWasLeastPicked: c.lastHit ? 1 : 0, SpearmanRho: c.rho, PearsonShare: c.pear ?? '' });
   c.rows.forEach(r => out.push({ Run: u.label, Row: 'Product', Product: r.product, BrandAndModel: r.brand, PredictedRank: r.pred, ActualStorefrontRank: r.actual, StorefrontPicks: r.picks, StorefrontTrials: c.trials, ExactMatch: r.match ? 1 : 0, WithinOne: r.near ? 1 : 0 })); }); return out; }
+
+// ---------- conjoint export with every question and answer, as the old tool had: prompt, full answer, reason (unclear ones kept, ChoseFirst blank) ----------
+function conjointExportRows() { const f = E.features(S.study.attrs), out = [], byPair = Object.fromEntries((S.design || []).map(p => [p.pair, p]));
+  expUnits().forEach(u => { const R = S.results[u.key]; if (!R) return;
+    if (R.imported) { conjointRows(u).forEach(r => { if (!r.choice) return; const a = E.encodeProduct(r.p1, S.study.attrs), b = E.encodeProduct(r.p2, S.study.attrs); const o = { Run: u.label, Model: u.m.model, Condition: u.c.label, Pair: r.pair, Order: r.order || 'AB', ChoseFirst: r.choice === 'first' ? 1 : 0 }; S.study.attrs.forEach(at => { o[E.safe(at.name) + '_Product1'] = r.p1[at.name]?.display; o[E.safe(at.name) + '_Product2'] = r.p2[at.name]?.display; }); f.forEach((x, j) => o[x.name] = +(a[j] - b[j]).toFixed(6)); out.push(o); }); return; }
+    Object.entries(R.conjoint || {}).sort((x, y) => (x[1].pair - y[1].pair) || String(x[1].order).localeCompare(String(y[1].order))).forEach(([id, x]) => { const pr = byPair[x.pair]; if (!pr) return;
+      const [A, B] = x.order === 'AB' ? [pr.p1, pr.p2] : [pr.p2, pr.p1], a = E.encodeProduct(A, S.study.attrs), b = E.encodeProduct(B, S.study.attrs);
+      const o = { Run: u.label, Model: u.m.model, Condition: u.c.label, Question: +id || id, Pair: x.pair, Order: x.order || 'AB', ChoseFirst: x.answer === 'first' ? 1 : x.answer === 'second' ? 0 : '', Answered: x.answer ? 'yes' : 'unclear (left out of the analysis)' };
+      S.study.attrs.forEach(at => { o[E.safe(at.name) + '_Product1'] = A[at.name]?.display; o[E.safe(at.name) + '_Product2'] = B[at.name]?.display; });
+      f.forEach((ft, j) => o[ft.name] = +(a[j] - b[j]).toFixed(6));
+      Object.assign(o, { Reason: x.reason ?? '', Answer: x.raw ?? '', ReAskAnswer: x.raw2 ?? '', Prompt: E.legacyConjointPrompt(S.study.product, S.study.attrs, A, B), ServedModel: x.served ?? '', At: x.at ?? '' }); out.push(o); }); });
+  return out; }
