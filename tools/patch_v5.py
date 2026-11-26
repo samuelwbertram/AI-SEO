@@ -163,6 +163,7 @@ root = Path(__file__).resolve().parent.parent
 guide_code += "\nconst VERIFY_PY = " + json.dumps((root / 'verify' / 'verify.py').read_text(encoding='utf-8')) + ";"
 guide_code += "\nconst VERIFY_R = " + json.dumps((root / 'verify' / 'verify.R').read_text(encoding='utf-8')) + ";\n"
 guide_code += (Path(__file__).parent / 'verify.js').read_text(encoding='utf-8')  # page 9: verification pack
+guide_code += "\n" + (Path(__file__).parent / 'helper.js').read_text(encoding='utf-8')  # v5.4: helper model dropdown
 guide_code += "\n" + (Path(__file__).parent / 'summary.js').read_text(encoding='utf-8')  # v5.4: plain-English results summary
 marker = "(async () => { await IDB.open();"
 s = rep(s, marker, new_code + "\n" + guide_code + "\n" + marker)
@@ -184,35 +185,15 @@ s = rep(s, "$('resOut').innerHTML = renderCompare(list, 'Within model · ' + (S.
 # ---------------------------------------------------------------- v5.4: product finder runs on Claude Opus 5.5 with the Anthropic key (OpenRouter kept as backup)
 s = rep(s, "assistModel: 'openai/gpt-4o-mini', reasoning:", "assistModel: 'claude-opus-5-5', reasoning:")
 s = rep(s, "<label>Helper model <input id=\"assistModel\" size=\"26\"></label>",
-        "<label>Helper model <span class=\"info\" data-tip=\"Optional, uses AI. Only for finding products while you set up a study; never used for the conjoint, storefront or analysis. A Claude model name (e.g. claude-opus-5-5) uses your Anthropic key with web search; a name with a slash (e.g. openai/gpt-4o-mini) uses OpenRouter. Check every value against its source link.\">i</span> <input id=\"assistModel\" size=\"26\"></label>")
+        "<label>Helper model <span class=\"info\" data-tip=\"Optional, uses AI. Only for finding products while you set up a study; never used for the conjoint, storefront or analysis. The list shows models from the providers you have entered a key for on page 4, each with its own web search. Check every value against its source link.\">i</span> <select id=\"assistSel\"></select> <input id=\"assistModel\" size=\"22\" placeholder=\"model ID\" style=\"display:none\"></label>")
 old_helper = s[s.index("async function helperCall(prompt, web) {"):s.index("function parseFound(text)")]
-new_helper = """async function helperCall(prompt, web) {
-  const model = (S.settings.assistModel || 'claude-opus-5-5').trim();
-  if (!model.includes('/')) {  // a Claude model name: Anthropic key, Anthropic web search
-    if (!keys.anthropic) throw new Error('Add your Anthropic key on page 4 first (the product finder uses ' + model + ').');
-    const messages = [{ role: 'user', content: prompt }], body = { model, max_tokens: 8000, messages };
-    if (web) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }];
-    let text = '';
-    for (let turn = 0; turn < 4; turn++) {
-      const j = await httpJSON(PROV.anthropic + '/messages', { method: 'POST', headers: anthHeaders(), body: JSON.stringify(body) });
-      text += (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-      if (j.stop_reason !== 'pause_turn') break;
-      messages.push({ role: 'assistant', content: j.content }); }
-    return text; }
-  const key = keys.openrouter; if (!key) throw new Error('Add your OpenRouter key on page 4 first, or use a Claude helper model such as claude-opus-5-5.');
-  const body = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 6000 };
-  if (web) body.tools = [{ type: 'openrouter:web_search' }];
-  const h = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'X-Title': 'LLM Conjoint Lab' };
-  let j; try { j = await httpJSON(PROV.openrouter + '/chat/completions', { method: 'POST', headers: h, body: JSON.stringify(body) }); }
-  catch (e) { if (!web) throw e; delete body.tools; body.model = model + ':online'; j = await httpJSON(PROV.openrouter + '/chat/completions', { method: 'POST', headers: h, body: JSON.stringify(body) }); }
-  const m = j.choices?.[0]?.message; return typeof m?.content === 'string' ? m.content : (m?.content || []).map(p => p.text || '').join('');
-}
+new_helper = """async function helperCall(prompt, web) { return helperCallV54(prompt, web); }
 """
 s = s.replace(old_helper, new_helper)
 s = s.replace("Uses your OpenRouter key and the helper model below (web search adds a small cost per search).",
-        "<b>Optional, uses AI:</b> by default Claude Opus 5.5 with your Anthropic key (web search adds a small cost). Only for setting up products; it is never used for the conjoint, storefront or analysis. Check every value against its source link before you run.")
+        "<b>Optional, uses AI:</b> pick the helper model below from the providers you have keys for (Claude, GPT or Gemini, each with web search; searches add a small cost). Only for setting up products; it is never used for the conjoint, storefront or analysis. Check every value against its source link before you run.")
 # older saved projects still carry the old default helper; move them to the new one
-s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); verifyInit();")
+s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); initHelperSelect(); verifyInit();")
 
 out_path.write_text(s, encoding='utf-8')
 print('written', out_path, len(s))
