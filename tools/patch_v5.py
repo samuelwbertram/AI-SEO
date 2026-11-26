@@ -19,7 +19,10 @@ s = src
 
 # ---------------------------------------------------------------- titles / version
 s = s.replace('LLM Conjoint Lab v3 app', 'LLM Conjoint Lab v5 app')
-s = rep(s, '<span class="sub">v3 · build a study', '<span class="sub">v5.4 · build a study')
+from datetime import datetime
+from zoneinfo import ZoneInfo
+BUILD = datetime.now(ZoneInfo('Australia/Melbourne')).strftime('%d %b %Y %H:%M')   # shown in the header, so you can tell you have the newest version
+s = rep(s, '<span class="sub">v3 · build a study', f'<span class="sub">v5.4 (updated {BUILD} Melbourne time) · build a study')
 s = re.sub(r'<title>[^<]*</title>', '<title>LLM Conjoint Lab v5</title>', s, count=1)
 
 # ---------------------------------------------------------------- engine: linked attributes in the conjoint wording
