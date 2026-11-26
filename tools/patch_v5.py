@@ -232,6 +232,11 @@ s = rep(s, "Mean rank (${a.nRank} rankings)</th><th class=\"num\">#1 finishes</t
 s = rep(s, "Storefront share (${a.nStore})", "Storefront picks (share of ${a.nStore} trials)")
 s = rep(s, "addProducts(pick);", "addProducts(codeNames(pick));")
 s = rep(s, "source: p.source || ''", "source: ''")
+# ---------------------------------------------------------------- v5.4 (c): product predictions use every storefront trial (pilot + full) for picks, rank and match
+s = rep(s, "  if (k === 'predictions') return U.filter(F).flatMap(u => { const a = F(u); return S.val.products.map((p, i) => ({ Run: u.label, Product: p.name, PredictedUtility: a.pred?.[i] ?? '', PredictedRank: a.predRank?.[i] ?? '', MeanRank: a.avgRank?.[i] ?? '', FirstFinishes: a.firstCount?.[i] ?? '', StorefrontSharePct: a.share ? +(100 * a.share[i]).toFixed(2) : '' })); });",
+        "  if (k === 'predictions') return U.filter(F).flatMap(u => productRows(u, F(u)));")
+s = rep(s, "Storefront picks (share of ${a.nStore} trials)</th>", "Storefront picks (of all ${a.nStore} trials)</th><th class=\"num\">Storefront rank</th>")
+s = rep(s, "a.share ? `<td class=\"num\">${(100 * a.share[i]).toFixed(1)}%</td>` : ''}</tr>`).join('')}</tab", "a.share ? `<td class=\"num\">${Math.round(a.share[i] * a.nStore)} (${(100 * a.share[i]).toFixed(1)}%)</td><td class=\"num\">${E.ranks(a.share, true)[i]}${a.predRank && E.ranks(a.share, true)[i] === a.predRank[i] ? ' ✓' : ''}</td>` : ''}</tr>`).join('')}</tab")
 # older saved projects still carry the old default helper; move them to the new one
 s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; S.val.products.forEach(p => { if (p.source) p.source = ''; }); renderPresets(); syncAll(); initHelperSelect(); initV54(); initV54b(); verifyInit();")
 

@@ -79,3 +79,13 @@ function initV54b() {
 function codeNames(list) { if (!S.val.headers.includes('Brand and model')) S.val.headers.push('Brand and model');
   let k = 1; const next = () => { let n; do { n = 'P' + String(k++).padStart(2, '0'); } while (S.val.products.some(x => x.name === n)); return n; };
   return list.map(p => ({ name: next(), display: { ...(p.display || {}), 'Brand and model': p.name } })); }
+
+// ---------- product predictions vs actual: storefront picks, share and rank from every storefront trial of the run ----------
+// (pilot and full trials are one set: the full run carries on from the pilot; demo and validation trials are never included)
+function productRows(u, a) { const P = S.val.products; if (!a) return [];
+  const picks = a.share ? a.share.map(s => Math.round(s * a.nStore)) : null, sRank = a.share ? E.ranks(a.share, true) : null;
+  return P.map((p, i) => ({ Run: u.label, Product: p.name, BrandAndModel: p.display?.['Brand and model'] ?? '',
+    PredictedUtility: a.pred?.[i] ?? '', PredictedShareLockedPct: a.lockedPred ? +(100 * a.lockedPred[i]).toFixed(2) : '', PredictedRank: a.predRank?.[i] ?? '',
+    StorefrontPicks: picks ? picks[i] : '', StorefrontTrials: a.nStore ?? '', StorefrontSharePct: a.share ? +(100 * a.share[i]).toFixed(2) : '', StorefrontRank: sRank ? sRank[i] : '',
+    RankMatches: sRank && a.predRank ? (sRank[i] === a.predRank[i] ? 1 : 0) : '', RankGap: sRank && a.predRank ? +(sRank[i] - a.predRank[i]).toFixed(1) : '',
+    RankingTask_MeanRank: a.avgRank?.[i] ?? '', RankingTask_RankedFirst: a.firstCount?.[i] ?? '', RankingTask_Runs: a.nRank ?? '' })); }
