@@ -58,7 +58,7 @@ canvas.store{max-width:100%;border:1px solid var(--line);border-radius:6px}
 #tip{display:none;position:absolute;z-index:99;max-width:360px;background:#1d1d1f;color:#f2f2f2;padding:10px 12px;border-radius:8px;font-size:12.5px;line-height:1.45;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .navrow{display:flex;justify-content:space-between;margin:6px 0 30px}
 td input{padding:4px 6px}</style></head><body>
-<header><h1>LLM Conjoint Lab</h1><span class="sub">v5.3 · build a study, run it on many AI models at once, check whether each model's conjoint predicts what it actually does</span></header>
+<header><h1>LLM Conjoint Lab</h1><span class="sub">v5.4 · build a study, run it on many AI models at once, check whether each model's conjoint predicts what it actually does</span></header>
 <nav id="tabs">
   <button data-t="study" class="on"><span class="n">1</span>Study</button>
   <button data-t="products"><span class="n">2</span>Products</button>
@@ -118,8 +118,8 @@ td input{padding:4px 6px}</style></head><body>
       <button class="b sec" id="loadS2val">Load Study 2 speakers</button>
     </div>
     <div id="ptab-find" class="ptab" style="display:none;margin-top:12px">
-      <p class="hint">Searches the web for real products in this category and fills in each attribute, with a source link so you can check it. Uses your OpenRouter key and the helper model below (web search adds a small cost per search).</p>
-      <div class="row"><label>Extra search hints <input id="findHint" size="40" placeholder="e.g. sold in Australia, 2025 models, under $200"></label><label>How many <input id="findN" type="number" value="10" min="1" max="20"></label><label>Helper model <input id="assistModel" size="26"></label><button class="b" id="findGo">Search</button></div>
+      <p class="hint">Searches the web for real products in this category and fills in each attribute, with a source link so you can check it. <b>Optional, uses AI:</b> by default Claude Opus 5.5 with your Anthropic key (web search adds a small cost). Only for setting up products; it is never used for the conjoint, storefront or analysis. Check every value against its source link before you run.</p>
+      <div class="row"><label>Extra search hints <input id="findHint" size="40" placeholder="e.g. sold in Australia, 2025 models, under $200"></label><label>How many <input id="findN" type="number" value="10" min="1" max="20"></label><label>Helper model <span class="info" data-tip="Optional, uses AI. Only for finding products while you set up a study; never used for the conjoint, storefront or analysis. A Claude model name (e.g. claude-opus-5-5) uses your Anthropic key with web search; a name with a slash (e.g. openai/gpt-4o-mini) uses OpenRouter. Check every value against its source link.">i</span> <input id="assistModel" size="26"></label><button class="b" id="findGo">Search</button></div>
     </div>
     <div id="ptab-link" class="ptab" style="display:none;margin-top:12px">
       <p class="hint">Paste a link to a comparison or product page, or paste the page's text (select all, copy, paste here; this always works, even when a site blocks automated reading). The helper model pulls out each product and its attributes.</p>
@@ -572,7 +572,7 @@ const DEFAULT = () => ({
   val: { headers: ['Name'], products: [] },
   tasks: { conjoint: true, ranking: true, rankRuns: 20, store: true, storeTrials: 1000, storeMode: 'text', cols: 5 },
   models: [], conditions: [{ id: 'c1', label: 'Default', temperature: '' }],
-  settings: { temperature: '', maxTokens: 2000, conc: 4, retries: 3, reask: true, assistModel: 'openai/gpt-4o-mini', reasoning: 'low', runSize: 'pilot', pilotPairs: 30, pilotTrials: 20, pilotRanks: 3, spendCap: 30, validationTrials: 10, autoFull: false },
+  settings: { temperature: '', maxTokens: 2000, conc: 4, retries: 3, reask: true, assistModel: 'claude-opus-5-5', reasoning: 'low', runSize: 'pilot', pilotPairs: 30, pilotTrials: 20, pilotRanks: 3, spendCap: 30, validationTrials: 10, autoFull: false },
   results: {}, fits: {} });
 let S = DEFAULT(), keys = {}, presets = {};
 
@@ -664,8 +664,19 @@ function renderVal() {
 // ----- helper model: find / extract products -----
 function attrSpec() { return S.study.attrs.map(a => `- ${a.name}${a.kind === 'list' ? ` (study levels: ${a.levels.join(', ')})` : ''}`).join('\n'); }
 async function helperCall(prompt, web) {
-  const key = keys.openrouter; if (!key) throw new Error('Add your OpenRouter key on page 4 first.');
-  const model = (S.settings.assistModel || 'openai/gpt-4o-mini').trim();
+  const model = (S.settings.assistModel || 'claude-opus-5-5').trim();
+  if (!model.includes('/')) {  // a Claude model name: Anthropic key, Anthropic web search
+    if (!keys.anthropic) throw new Error('Add your Anthropic key on page 4 first (the product finder uses ' + model + ').');
+    const messages = [{ role: 'user', content: prompt }], body = { model, max_tokens: 8000, messages };
+    if (web) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }];
+    let text = '';
+    for (let turn = 0; turn < 4; turn++) {
+      const j = await httpJSON(PROV.anthropic + '/messages', { method: 'POST', headers: anthHeaders(), body: JSON.stringify(body) });
+      text += (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      if (j.stop_reason !== 'pause_turn') break;
+      messages.push({ role: 'assistant', content: j.content }); }
+    return text; }
+  const key = keys.openrouter; if (!key) throw new Error('Add your OpenRouter key on page 4 first, or use a Claude helper model such as claude-opus-5-5.');
   const body = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 6000 };
   if (web) body.tools = [{ type: 'openrouter:web_search' }];
   const h = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'X-Title': 'LLM Conjoint Lab' };
@@ -892,9 +903,9 @@ function renderResults() { const sel = $('viewSel'), cur = sel.value; const U = 
   sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(''); if (opts.some(o => o[0] === cur)) sel.value = cur; sel.onchange = renderResults;
   if (!Object.keys(S.fits).length) { $('resOut').innerHTML = `<div class="card"><p class="hint">Press Analyse after a run. You'll get: (1) per model, a coefficient table in SPSS layout, relative importance bars, and predicted vs actual for the ranking and storefront; (2) all models side by side, with a count of models where each effect holds; (3) within one model, the same results across conditions. To try it free: add simulated models on page 4, run, then analyse.</p></div>`; return; }
   const [kind, id] = sel.value.split('|').length > 2 ? [sel.value.split('|')[0], sel.value.split('|').slice(1).join('|')] : sel.value.split('|');
-  if (kind === 'one') { const a = S.fits[id]; $('resOut').innerHTML = a ? renderOne(a) : '<p class="hint">No analysis yet.</p>'; return; }
-  if (kind === 'all') { const list = U.filter(u => u.c.id === id || u.c.id === 'import').map(u => S.fits[u.key]).filter(Boolean); $('resOut').innerHTML = renderCompare(list, 'Model comparison'); return; }
-  if (kind === 'within') { const list = U.filter(u => mkey(u.m) === id).map(u => ({ ...S.fits[u.key], label: u.c.label })).filter(a => a && (a.fit || a.avgRank || a.share)); $('resOut').innerHTML = renderCompare(list, 'Within model · ' + (S.models.find(m => mkey(m) === id)?.label || '') + ' across conditions'); }
+  if (kind === 'one') { const a = S.fits[id]; $('resOut').innerHTML = a ? summaryHTML([a], 'Summary · ' + a.label) + fullTables(renderOne(a)) : '<p class="hint">No analysis yet.</p>'; return; }
+  if (kind === 'all') { const list = U.filter(u => u.c.id === id || u.c.id === 'import').map(u => S.fits[u.key]).filter(Boolean); $('resOut').innerHTML = summaryHTML(list, 'Summary') + fullTables(renderCompare(list, 'Model comparison')); return; }
+  if (kind === 'within') { const list = U.filter(u => mkey(u.m) === id).map(u => ({ ...S.fits[u.key], label: u.c.label })).filter(a => a && (a.fit || a.avgRank || a.share)); $('resOut').innerHTML = summaryHTML(list, 'Summary across conditions') + fullTables(renderCompare(list, 'Within model · ' + (S.models.find(m => mkey(m) === id)?.label || '') + ' across conditions')); }
 }
 function impBars(imp) { const s = imp.slice().sort((x, y) => y.pct - x.pct), mx = Math.max(...s.map(x => x.pct)); return s.map((x, i) => `<div class="bar-wrap"><div><b>${i + 1}. ${esc(x.attr)}</b></div><div><div class="bar" style="width:${mx ? 100 * x.pct / mx : 0}%"></div></div><div class="num"><b>${x.pct.toFixed(1)}%</b></div></div>`).join(''); }
 function renderOne(a) { const P = S.val.products; let h = '';
@@ -1452,7 +1463,84 @@ function verifyInit() {
     document.querySelector('main').appendChild(s); }
   $('verifyGo').onclick = downloadPack; }
 
-(async () => { await IDB.open(); const s = await IDB.get('state'); if (s) S = { ...DEFAULT(), ...s }; presets = (await IDB.get('presets')) || {}; try { keys = JSON.parse(localStorage.getItem('conjointLabV5.keys') || '{}'); } catch (e) {} renderPresets(); syncAll(); verifyInit(); guideInit(); launchInit(); })();
+// ================= v5.4: plain-English results summary =================
+// Fixed rules only: every sentence below is filled in from numbers the analysis already computed.
+// The same data always gives the same words. No AI is used anywhere in this file.
+const VERDICT_STRONG = 0.70, VERDICT_PARTLY = 0.40;   // Spearman rho cut-offs approved by Sam, 26 Nov 2026
+const SIG = 0.05;
+function verdictOf(rho) { if (rho == null || isNaN(rho)) return null;
+  return rho >= VERDICT_STRONG ? { word: 'Yes, strongly', cls: 'ok' } : rho >= VERDICT_PARTLY ? { word: 'Partly', cls: 'mid' } : { word: 'No', cls: 'no' }; }
+function productLabel(name) { const p = S.val.products.find(x => x.name === name); const brand = p?.display?.['Brand and model']; return brand ? `${name} (${brand})` : name; }
+
+// What one model prefers on one attribute, in words. Uses the fitted coefficients: continuous = sign of B on the
+// difference; categorical = the level with the highest effect (the reference level counts as 0).
+function attrPreference(fit, attr) {
+  const feats = E.features(S.study.attrs), cs = fit.coefs.slice(1), mine = feats.map((f, j) => ({ f, c: cs[j] })).filter(x => x.f.attr === attr.name);
+  if (!mine.length) return { text: 'no estimate', sig: false };
+  if (attr.type !== 'categorical') { const c = mine[0].c; if (!c || c.p >= SIG) return { text: 'no clear direction', sig: false };
+    return { text: attr.isPrice ? (c.B < 0 ? 'prefers a lower price' : 'prefers a higher price') : `prefers ${c.B > 0 ? 'higher' : 'lower'}`, sig: true, dir: c.B > 0 ? 1 : -1 }; }
+  const ref = attr.levels.find(l => !mine.some(x => x.f.level === l));
+  const opts = [{ level: ref, B: 0, p: 0 }, ...mine.map(x => ({ level: x.f.level, B: x.c.B, p: x.c.p }))];
+  const best = opts.reduce((a, b) => (b.B > a.B ? b : a));
+  // clear favourite: a non-reference level significantly above the reference, or the reference with every other level significantly below it
+  const clear = best.level === ref ? mine.every(x => x.c.p < SIG && x.c.B < 0) : best.p < SIG && best.B > 0;
+  if (clear) return { text: `prefers ${best.level}`, sig: true, best: best.level };
+  const worse = mine.filter(x => x.c.p < SIG && x.c.B < 0).map(x => x.f.level);   // no clear favourite, but some levels clearly worse than the reference
+  return worse.length ? { text: `avoids ${worse.join(' and ')} (no clear favourite)`, sig: false } : { text: 'no clear preference', sig: false }; }
+const pTxt = p => p < .001 ? 'p < .001' : 'p = ' + p.toFixed(3).replace(/^0/, '');
+
+function topAttrs(fit, n) { return fit.importance.map((x, i) => ({ ...x, i })).sort((a, b) => b.pct - a.pct || a.i - b.i).slice(0, n); }
+
+function modelSummaryHTML(a) {
+  const P = S.val.products, rows = [];
+  if (a.fit) { const f = a.fit, top = topAttrs(f, 3);
+    rows.push(`<div class="sumq">What it cares about most</div><ol class="sumlist">${top.map(t => { const at = S.study.attrs.find(x => x.name === t.attr); const pr = at ? attrPreference(f, at) : { text: '' };
+      return `<li><b>${esc(t.attr)}</b> (${t.pct.toFixed(0)}% importance): ${esc(pr.text)}</li>`; }).join('')}</ol>`);
+    const fs = f.firstShare, c0 = f.coefs[0];
+    rows.push(`<div class="sumq">Does it favour whatever is listed first?</div><p>In the conjoint it chose the first-listed product ${(100 * fs).toFixed(0)}% of the time (50% = no lean). ${c0.p < SIG ? `That lean is real (${pTxt(c0.p)}).` : `That is within chance (${pTxt(c0.p)}).`}${a.posShare ? ` In the storefront it picked the product in the first position ${(100 * a.posShare[0]).toFixed(0)}% of the time (an even split is ${(100 / P.length).toFixed(0)}%).` : ''}</p>`); }
+  else if (a.fitError) rows.push(`<p class="msg err">The conjoint could not be estimated: ${esc(a.fitError)}</p>`);
+  const v = verdictOf(a.rhoStore);
+  if (v) rows.push(`<div class="sumq">Did its conjoint predict what it bought?</div><p><span class="verdict ${v.cls}">${v.word}.</span> The ranking predicted from its conjoint matched its storefront picks at ρ = ${a.rhoStore.toFixed(2)}.${a.top1 != null ? ` Its predicted favourite, ${esc(productLabel(a.bestName))}, was picked in ${(100 * a.top1).toFixed(0)}% of ${a.nStore} storefront trials (chance = ${(100 / P.length).toFixed(0)}%).` : ''}</p>`);
+  else if (a.fit) rows.push(`<div class="sumq">Did its conjoint predict what it bought?</div><p class="hint">No storefront trials yet for this model.</p>`);
+  const vr = verdictOf(a.rhoRank);
+  if (vr) rows.push(`<p class="hint">Ranking task: the predicted order matched its own rankings at ρ = ${a.rhoRank.toFixed(2)} (${vr.word.toLowerCase()}).</p>`);
+  const notes = [];
+  if (a.nRows != null && a.nValid != null && a.nRows > a.nValid) notes.push(`${a.nRows - a.nValid} unclear conjoint answers were left out`);
+  if (a.misreadRate) notes.push(`${(100 * a.misreadRate).toFixed(0)}% of storefront trials had a misread card`);
+  if (a.fit?.separation) notes.push('some estimates are extreme, so read its full table with care');
+  if (notes.length) rows.push(`<p class="hint">Note: ${notes.join('; ')}.</p>`);
+  return `<div class="sumcard"><h3>${esc(a.label)}</h3>${rows.join('')}</div>`; }
+
+function acrossHTML(A) { const W = A.filter(a => a.fit); if (W.length < 2) return '';
+  const agree = [], split = [], unclear = [];
+  S.study.attrs.forEach(at => { const prs = W.map(a => attrPreference(a.fit, at)), texts = prs.map(p => p.text);
+    if (prs.every(p => p.sig) && texts.every(t => t === texts[0])) agree.push(`<li><b>${esc(at.name)}</b>: every model ${esc(texts[0])}</li>`);
+    else if (prs.filter(p => p.sig).length >= 2 && new Set(prs.filter(p => p.sig).map(p => p.text)).size > 1) split.push(`<li><b>${esc(at.name)}</b>: ${W.map((a, i) => `${esc(a.label)} ${esc(texts[i])}`).join('; ')}</li>`);
+    else unclear.push(at.name); });
+  const mean = S.study.attrs.map((at, i) => ({ attr: at.name, i, m: W.reduce((s, a) => s + ((a.fit.importance.find(x => x.attr === at.name) || { pct: 0 }).pct), 0) / W.length })).sort((x, y) => y.m - x.m || x.i - y.i);
+  let sim = '';
+  if (W.every(a => a.pred)) { const rs = []; W.forEach((a, i) => W.forEach((b, j) => { if (j > i) rs.push(E.spearman(a.pred, b.pred)); })); const m = rs.reduce((s, x) => s + x, 0) / rs.length, v = verdictOf(m);
+    sim = `<p>Do the models rank the products the same way? <span class="verdict ${v.cls}">${v.word}.</span> Their predicted product orders match at an average ρ = ${m.toFixed(2)} across ${rs.length} model pairs.</p>`; }
+  return `<div class="sumcard wide"><h3>Which preferences hold across models? (${W.length} models)</h3>
+    <div class="sumq">Same preference in every model</div>${agree.length ? `<ul class="sumlist">${agree.join('')}</ul>` : '<p class="hint">None: no attribute has the same clear preference in every model.</p>'}
+    ${split.length ? `<div class="sumq">Models disagree</div><ul class="sumlist">${split.join('')}</ul>` : ''}
+    ${unclear.length ? `<p class="hint">Mixed or unclear in at least one model: ${unclear.map(esc).join(', ')}.</p>` : ''}
+    <div class="sumq">Most important on average</div><p>${mean.slice(0, 3).map(x => `${esc(x.attr)} (${x.m.toFixed(0)}%)`).join(', then ')}.</p>${sim}</div>`; }
+
+function summaryHTML(A, title) { if (!A.length) return '';
+  return `<div class="card summary"><h2>${esc(title)}</h2><p class="hint">Plain-English summary, written from the numbers below by fixed rules (no AI). “Clear” means p &lt; .05. Verdicts use the Spearman match ρ: .70 or more = Yes, strongly; .40 to .69 = Partly; below .40 = No.</p>
+    ${acrossHTML(A)}<div class="sumgrid">${A.map(modelSummaryHTML).join('')}</div></div>`; }
+function fullTables(inner, label) { return `<details class="fulltables"><summary>${esc(label || 'Show full tables (coefficients, importance, predictions)')}</summary>${inner}</details>`; }
+(() => { const st = document.createElement('style'); st.textContent = `
+  .summary h3{margin:0 0 6px} .sumgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:12px}
+  .sumcard{border:1px solid var(--line,#ddd);border-radius:10px;padding:12px 14px;background:var(--bg2,#fafaf7)} .sumcard.wide{margin-top:8px}
+  .sumq{font-weight:600;margin:10px 0 4px} .sumlist{margin:0 0 4px 18px;padding:0} .sumlist li{margin:2px 0}
+  .verdict{display:inline-block;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:6px}
+  .verdict.ok{background:#d9efe3;color:#1d5b3c} .verdict.mid{background:#fbefcf;color:#7a5a00} .verdict.no{background:#f6d9d6;color:#8a2a20}
+  details.fulltables{margin:8px 0 16px} details.fulltables>summary{cursor:pointer;font-weight:600;padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:#fff;list-style:none}
+  details.fulltables>summary::before{content:'▸ '} details.fulltables[open]>summary::before{content:'▾ '} details.fulltables[open]>summary{margin-bottom:12px}`; document.head.appendChild(st); })();
+
+(async () => { await IDB.open(); const s = await IDB.get('state'); if (s) S = { ...DEFAULT(), ...s }; presets = (await IDB.get('presets')) || {}; try { keys = JSON.parse(localStorage.getItem('conjointLabV5.keys') || '{}'); } catch (e) {} if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); verifyInit(); guideInit(); launchInit(); })();
 
 </script>
 </body></html>

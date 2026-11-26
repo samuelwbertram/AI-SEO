@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.4 — 26 Nov 2026
+
+- **Plain-English summary on Results.** Above the tables: what each AI cares about most (top 3 attributes and the direction it prefers), whether it favours whatever is listed first, and "Did its conjoint predict what it bought?" (Spearman ρ between the locked prediction and storefront picks: .70 or more = Yes, strongly; .40 to .69 = Partly; below .40 = No), plus which preferences hold across all models and where they disagree. "Clear" means p < .05. Written by fixed rules from the computed numbers (no AI), so the same data always gives the same words. The full tables are unchanged, one click below ("Show full tables").
+- **Product finder** (page 2, optional) now uses Claude Opus 5.5 with your Anthropic key and Anthropic web search by default; a model name with a slash still goes through OpenRouter. Labelled as optional AI that is never used for the conjoint, storefront or analysis.
+- **Tests:** new `tests/consistency_test.py` (same seed → same design and storefront pages; same data → identical numbers and identical summary, also in a fresh page). `tests/verify_pack_test.py` now runs with no arguments on any computer and runs the pack's own verify.py.
+
 ## v5.3 — 26 Nov 2026
 
 - **Page 9 · Verify** and **Download verification pack** (.zip): raw conjoint and storefront data, the locked prediction files with their SHA-256 fingerprints and lock history, the tool's results at full precision, and SPSS, R and Python scripts that recompute everything (checks A, B, C). Guide: VALIDATION.md; worked example: examples/demo_verification_pack.

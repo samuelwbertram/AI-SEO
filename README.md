@@ -45,14 +45,15 @@ New to it? A short tour opens the first time you load the page (replay it with *
   pip install playwright
   python tests/sim_recovery.py
   ```
+- **Consistency:** `tests/consistency_test.py` checks that the same seed gives the same design and storefront pages, and that analysing the same data twice (or in a fresh page) gives identical numbers and an identical plain-English summary. `tests/verify_pack_test.py` runs the demo, downloads the verification pack and runs its verify.py (needs `pip install pandas numpy scipy statsmodels`).
 
 ## Files
 
 | Path | What |
 |---|---|
 | `index.html` | The Lab. Built from v3 by `tools/patch_v5.py`; do not edit by hand. |
-| `tools/` | `patch_v5.py` + `v5_additions.js` + `guide.js` (tour, demo) + `launch.js` (one-click launch) + `verify.js` (page 9): everything v5 adds to v3. Rebuild with `python tools/patch_v5.py index.html` |
-| `tests/` | Simulated end-to-end and parameter-recovery check; verification-pack test |
+| `tools/` | `patch_v5.py` + `v5_additions.js` + `guide.js` (tour, demo) + `launch.js` (one-click launch) + `verify.js` (page 9) + `summary.js` (plain-English results): everything v5 adds to v3. Rebuild with `python tools/patch_v5.py index.html` |
+| `tests/` | Parameter recovery, consistency (same input → same output) and verification-pack tests |
 | `verify/` | `verify.py` and `verify.R`, the outside-the-tool checks (also bundled into every verification pack) |
 | `examples/` | A finished demo run's verification pack, with the Python and R reports it should produce |
 | `VALIDATION.md` | Step-by-step guide to checking results in SPSS, R or Python |
