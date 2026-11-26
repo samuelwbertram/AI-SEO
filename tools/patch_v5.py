@@ -163,6 +163,7 @@ root = Path(__file__).resolve().parent.parent
 guide_code += "\nconst VERIFY_PY = " + json.dumps((root / 'verify' / 'verify.py').read_text(encoding='utf-8')) + ";"
 guide_code += "\nconst VERIFY_R = " + json.dumps((root / 'verify' / 'verify.R').read_text(encoding='utf-8')) + ";\n"
 guide_code += (Path(__file__).parent / 'verify.js').read_text(encoding='utf-8')  # page 9: verification pack
+guide_code += "\n" + (Path(__file__).parent / 'spss_full.js').read_text(encoding='utf-8')  # v5.4: full SPSS analysis in the CSV .zip
 guide_code += "\n" + (Path(__file__).parent / 'v54_run.js').read_text(encoding='utf-8')  # v5.4: validation panel, cut-off answers, finder progress, keys first
 guide_code += "\n" + (Path(__file__).parent / 'v54_more.js').read_text(encoding='utf-8')  # v5.4: exports per model, prices, alerts, pilot banner
 guide_code += "\n" + (Path(__file__).parent / 'helper.js').read_text(encoding='utf-8')  # v5.4: helper model dropdown
@@ -237,6 +238,12 @@ s = rep(s, "  if (k === 'predictions') return U.filter(F).flatMap(u => { const a
         "  if (k === 'predictions') return U.filter(F).flatMap(u => productRows(u, F(u)));")
 s = rep(s, "Storefront picks (share of ${a.nStore} trials)</th>", "Storefront picks (of all ${a.nStore} trials)</th><th class=\"num\">Storefront rank</th>")
 s = rep(s, "a.share ? `<td class=\"num\">${(100 * a.share[i]).toFixed(1)}%</td>` : ''}</tr>`).join('')}</tab", "a.share ? `<td class=\"num\">${Math.round(a.share[i] * a.nStore)} (${(100 * a.share[i]).toFixed(1)}%)</td><td class=\"num\">${E.ranks(a.share, true)[i]}${a.predRank && E.ranks(a.share, true)[i] === a.predRank[i] ? ' ✓' : ''}</td>` : ''}</tr>`).join('')}</tab")
+# ---------------------------------------------------------------- v5.4 (d): CSV export = one .zip with every part, plus the full SPSS analysis
+s = rep(s, "    if (f === 'csv') { parts.forEach(p => { if (p === 'spss') download(`${base}_syntax.sps`, spssText(), 'text/plain'); else { const r = partRows(p); if (r.length) download(`${base}_${p}.csv`, E.toCSV(r), 'text/csv'); } }); msg('expMsg', 'Downloaded.'); }",
+        "    if (f === 'csv') { const files = [], root = `${base}_${stamp()}/`; parts.forEach(p => { if (p === 'spss') files.push(...spssPack()); else { const r = partRows(p); if (r.length) files.push([`${fn(PARTS.find(x => x[0] === p)[1]).replace(/_+$/, '')}.csv`, '\\ufeff' + E.toCSV(r)]); } }); if (!files.length) throw new Error('Nothing to export for the ticked parts yet.'); download(`${base}_${stamp()}.zip`, makeZip(files.map(([n, t]) => [root + n, t]))); msg('expMsg', `Downloaded one .zip with ${files.length} files${parts.includes('spss') ? ' (open spss/READ_ME.txt for the SPSS steps)' : ''}.`); }")
+s = rep(s, "['spss', 'SPSS syntax']", "['spss', 'SPSS: full analysis, start to finish (syntax + data files)']")
+s = rep(s, '<option value="csv">CSV (one file per part)</option>', '<option value="csv">CSV: every part in one .zip (with the full SPSS analysis)</option>')
+s = rep(s, "const spssText = () => E.spssPerModel(", "const spssText = () => '* For the full start-to-finish SPSS analysis, export as \"CSV: every part in one .zip\" and open spss/analysis.sps.\\n* The per-model syntax below runs on the Conjoint data sheet only.\\n\\n' + E.spssPerModel(")
 # older saved projects still carry the old default helper; move them to the new one
 s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; S.val.products.forEach(p => { if (p.source) p.source = ''; }); renderPresets(); syncAll(); initHelperSelect(); initV54(); initV54b(); verifyInit();")
 
