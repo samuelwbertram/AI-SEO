@@ -44,17 +44,20 @@ async function helperCallV54(prompt, web) {
     for (let turn = 0; turn < 4; turn++) {   // web search can pause a long turn; send it back to carry on
       const j = await httpJSON(PROV.anthropic + '/messages', { method: 'POST', signal: helperAbort?.signal, headers: anthHeaders(), body: JSON.stringify(body) });
       text += (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      (j.content || []).filter(b => b.type === 'server_tool_use' && b.input?.query).forEach(b => helperQueries.push(b.input.query));
       if (j.stop_reason !== 'pause_turn') break;
       messages.push({ role: 'assistant', content: j.content }); }
     return text; }
   if (provider === 'openai') {   // Responses API; web search is the built-in web_search tool
     const body = { model, input: prompt, max_output_tokens: 8000 }; if (web) body.tools = [{ type: 'web_search' }];
     const j = await httpJSON(PROV.openai + '/responses', { method: 'POST', signal: helperAbort?.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
+    (j.output || []).filter(o => o.type === 'web_search_call').forEach(o => { const q = o.action?.query || o.action?.queries; [].concat(q || []).forEach(x => helperQueries.push(x)); });
     if (typeof j.output_text === 'string' && j.output_text) return j.output_text;
     return (j.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text' || c.text).map(c => c.text || '').join(''); }
   if (provider === 'google') {   // generateContent; web search is Grounding with Google Search
     const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 8000 } }; if (web) body.tools = [{ google_search: {} }];
     const j = await httpJSON(`${PROV.google}/models/${encodeURIComponent(model.replace(/^models\//, ''))}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', signal: helperAbort?.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    (j.candidates?.[0]?.groundingMetadata?.webSearchQueries || []).forEach(x => helperQueries.push(x));
     return (j.candidates?.[0]?.content?.parts || []).filter(p => !p.thought && p.text).map(p => p.text).join(''); }
   // OpenRouter: any model ID with a slash
   const body = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 6000 };

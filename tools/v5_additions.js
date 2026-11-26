@@ -29,7 +29,7 @@ E10,Nook GlowLight 4 Plus,7.8 inches,E Ink Carta,300 PPI,32 GB,Waterproof (IPX7)
 const S3_MODELS = [
   { provider: 'openai', model: 'gpt-4o-2024-11-20', label: 'GPT-4o (2024-11-20)', pin: 2.5, pout: 10 },
   { provider: 'openai', model: 'gpt-4o-mini', label: 'GPT-4o mini', pin: 0.15, pout: 0.6 },
-  { provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', pin: 0.1, pout: 0.5 },
+  { provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', pin: 0.05, pout: 0.25 },
   { provider: 'anthropic', model: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', pin: 0.1, pout: 0.5 },
   { provider: 'anthropic', model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', pin: 1, pout: 5 },
   { provider: 'anthropic', model: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', pin: 2, pout: 10 },
@@ -48,10 +48,10 @@ function loadStudy3() {
 // ---------- one storefront trial, v3 method, on any product set (main run uses v3's own code path) ----------
 async function storeTrialV3(u, trial, products, store, ctl, salt) {
   const page = E.shuffle(products, E.rng((+S.study.seed || 1) * 100003 + trial + (salt || 0))), names = products.map(p => p.name), image = S.tasks.storeMode !== 'text';
-  const { res, pc, raw2, cut, cost } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);
+  const { res, pc, raw2, cut, cost, tin, tout } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);
   let mis = null, detail = '';
   if (image && pc.json?.cards) { mis = 0; const notes = []; page.forEach(p => { const c = pc.json.cards.find(x => E.normLevel(x.name) === E.normLevel(p.name)); if (!c) { mis++; notes.push(p.name + ' missing'); return; } showHeaders().slice(1).forEach(h => { const k = Object.keys(c).find(z => E.normLevel(z) === E.normLevel(h)); if (E.normLevel(k ? c[k] : '') !== E.normLevel(p.display[h])) { mis++; notes.push(`${p.name} ${h}: "${k ? c[k] : '—'}"`); } }); }); detail = notes.join('; '); }
-  store[trial] = { order: page.map(p => p.name).join(' | '), choice: pc.choice, position: pc.choice ? page.findIndex(p => p.name === pc.choice) + 1 : null, misreads: mis, misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, at: new Date().toISOString() };
+  store[trial] = { order: page.map(p => p.name).join(' | '), choice: pc.choice, position: pc.choice ? page.findIndex(p => p.name === pc.choice) + 1 : null, misreads: mis, misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, tin, tout, at: new Date().toISOString() };
   return !!pc.choice; }
 
 // ---------- lock the conjoint prediction before the storefront ----------
@@ -82,7 +82,7 @@ async function runValidation() { if (run.active) return; const U = units().filte
   const N = +S.settings.validationTrials || 10;
   log(`Validation check: ${dominant} is best on every attribute with a clear direction; the rest are worst. ${N} storefront trials per model.`);
   run.active = true; run.paused = false; globalStop = false; capWarned = false; $('startAll').disabled = true; $('runValidation').disabled = true; $('pauseAll').disabled = false; $('stopAll').disabled = false;
-  U.forEach(u => { resOf(u).validation = { dominant, trials: {} }; }); renderValidation();
+  U.forEach(u => { const R = resOf(u); if (R.validation && Object.keys(R.validation.trials || {}).length) R.validationHistory = [...(R.validationHistory || []), R.validation]; R.validation = { dominant, trials: {}, at: new Date().toISOString() }; }); renderValidation();
   const tick = setInterval(() => { renderProgress(); renderValidation(); }, 600);
   await Promise.all(U.map(async u => { const R = resOf(u); const ctl = run.ctl[u.key] = { stop: false }, st = run.stats[u.key] = { total: N, done: 0, ok: 0, bad: 0, err: 0, status: 'validation' };
     await workPhase(u, Array.from({ length: N }, (_, i) => ({ id: i + 1 })), st, ctl, t => storeTrialV3(u, t.id, prods, R.validation.trials, ctl, 99991));

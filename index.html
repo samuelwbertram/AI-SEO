@@ -375,9 +375,9 @@ const Engine = (() => {
     return p.trim();
   }
   function rankingPrompt(products, headers) { // old Workflow B wording
-    let p = 'Rank the following products from the best to the worst in terms of value for the money.\n\n';
+    let p = (S.study.legacyRank ? 'Rank the following products from the best to the worst in terms of value for the money.' : 'Rank the following products from the best to the worst.') + '\n\n';
     products.forEach((pr, i) => { p += `Product ${i + 1}: "${headers.map(h => `${h}: ${h === 'Name' ? pr.name : pr.display[h]}`).join(', ')}"\n`; });
-    p += '\nReturn ONLY the following three lines (no extra text):\n1. A line starting with "RANKING:" followed by the product Names in best-to-worst order, separated by " | "\n2. A line starting with "JSON:" followed by a JSON array of the product Names in best-to-worst order\n3. A line starting with "REASONING:" followed by your brief reasoning for the ranking (for debugging)\n\nExample format:\nRANKING: Product A | Product B | Product C\nJSON: ["Product A","Product B","Product C"]\nREASONING: Product A has the best value; Product C is last due to lower quality.';
+    p += '\nReturn ONLY the following three lines (no extra text):\n1. A line starting with "RANKING:" followed by the product Names in best-to-worst order, separated by " | "\n2. A line starting with "JSON:" followed by a JSON array of the product Names in best-to-worst order\n3. A line starting with "REASONING:" followed by your brief reasoning for the ranking (for debugging)\n\nExample format:\nRANKING: Product A | Product B | Product C\nJSON: ["Product A","Product B","Product C"]\nREASONING: ' + (S.study.legacyRank ? 'Product A has the best value; Product C is last due to lower quality.' : 'Product A is best overall; Product C is last.');
     return p;
   }
   function storefrontTextPrompt(product, products, headers) {
@@ -559,7 +559,7 @@ Item 10,4.6 out of 5,$79.99,16 Watts,12 Hours,IPX7,5.3,No multispeaker,0.62 lb`;
 // ---------- modules (add new ones here: they appear on page 3 automatically) ----------
 const MODULES = [
   { id: 'conjoint', title: 'A. Conjoint: compare two products in text', status: 'ready', what: 'The AI reads two product descriptions and says which it prefers (first or second), with a short reason. Repeated over every pair in the design.', gives: 'How much each attribute drives the AI’s choices (coefficients, relative importance), plus its preference for whichever product is listed first.', note: 'Study 2 method. Uses the old tool’s wording word for word.' },
-  { id: 'ranking', title: 'B. Ranking ("Rotman bot"): rank a list of whole products', status: 'ready', what: 'The AI sees all validation products at once and ranks them best to worst for value for money. Repeated N times as fresh conversations.', gives: 'Each product’s average rank and #1 finishes, compared with the order the conjoint predicts (Spearman ρ). In Study 2 this was ρ ≈ .90.', note: 'The old tool’s "Test products N times" workflow, built by Jeff’s brother.', setting: 'rankRuns', settingLabel: 'Rankings per model' },
+  { id: 'ranking', title: 'B. Ranking ("Rotman bot"): rank a list of whole products', status: 'ready', what: 'The AI sees all validation products at once and ranks them from best to worst (the Study 2 preset keeps its original "value for the money" wording). Repeated N times as fresh conversations.', gives: 'Each product’s average rank and #1 finishes, compared with the order the conjoint predicts (Spearman ρ). In Study 2 this was ρ ≈ .90.', note: 'The old tool’s "Test products N times" workflow, built by Jeff’s brother.', setting: 'rankRuns', settingLabel: 'Rankings per model' },
   { id: 'store', title: 'C. Storefront: pick one product from a shop page', status: 'ready', what: 'The AI sees a shop page of the validation products, in a new random order each trial, and picks the one it would buy. Text list for any model, or a screenshot for models that read images (it also reads every card back, so misreadings are counted).', gives: 'How often each product is picked vs the conjoint’s prediction, how often the predicted best product wins, picks by page position, misreading rate.', note: 'Every model sees the same shuffled pages, trial by trial.', setting: 'storeTrials', settingLabel: 'Trials per model' },
   { id: 'searchpage', title: 'Search results page (planned)', status: 'planned', what: 'Products shown as search results with titles, snippets and sponsored slots; the AI chooses which to click and buy.' },
   { id: 'assistant', title: 'Shopping assistant chat (planned)', status: 'planned', what: 'A consumer asks the AI for a recommendation in conversation; the AI picks and justifies.' },
@@ -598,7 +598,7 @@ function renderPresets() { $('presetSel').innerHTML = ['Study 3 (e-readers, Open
 $('presetLoad').onclick = () => { const n = $('presetSel').value; if (n.startsWith('Study 3')) { loadStudy3(); return; } if (n.startsWith('Study 2')) { loadStudy2(); return; } const p = presets[n]; if (!p) return; S.study = JSON.parse(JSON.stringify(p.study)); S.val = JSON.parse(JSON.stringify(p.val || S.val)); S.tasks = { ...S.tasks, ...(p.tasks || {}) }; S.design = null; S.projName = n; save(); syncAll(); };
 $('presetSave').onclick = async () => { const n = $('presetName').value.trim() || S.study.product || 'Untitled study'; presets[n] = { study: S.study, val: S.val, tasks: S.tasks, saved: new Date().toISOString() }; await IDB.set('presets', presets); renderPresets(); $('presetSel').value = n; $('presetName').value = ''; };
 $('presetDel').onclick = async () => { const n = $('presetSel').value; if (!presets[n]) return; if (!confirmTwice('presetDel', 'Click again to delete "' + n + '"')) return; delete presets[n]; await IDB.set('presets', presets); renderPresets(); };
-function loadStudy2() { const st = E.parseLegacyStudy(S2_STUDY); S.study = { product: st.product, attrs: st.attrs, iterations: 1000, seed: 1, counterbalance: false }; S.study.attrs.find(a => a.name === 'Bluetooth Version').type = 'categorical'; setValFromCSV(S2_VAL, true); S.projName = 'Study 2 replication – speakers'; S.design = null; save(); syncAll(); }
+function loadStudy2() { const st = E.parseLegacyStudy(S2_STUDY); S.study = { product: st.product, attrs: st.attrs, iterations: 1000, seed: 1, counterbalance: false, legacyRank: true }; S.study.attrs.find(a => a.name === 'Bluetooth Version').type = 'categorical'; setValFromCSV(S2_VAL, true); S.projName = 'Study 2 replication – speakers'; S.design = null; save(); syncAll(); }
 ['product', 'iterations', 'seed'].forEach(id => $(id).oninput = e => { S.study[id] = id === 'product' ? e.target.value : +e.target.value; if (id !== 'product') S.design = null; save(); renderDesignInfo(); });
 $('counterbalance').onchange = e => { S.study.counterbalance = e.target.checked; save(); renderDesignInfo(); };
 $('studyFile').onchange = e => readFile(e.target, t => { try { const st = E.parseLegacyStudy(t); S.study.product = st.product; S.study.attrs = st.attrs; S.study.iterations = st.iterations || S.study.iterations; S.design = null; mapValidation(); save(); syncAll(); } catch (err) { $('designInfo').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; } });
@@ -639,7 +639,7 @@ function bestLevel(a, display) { const n = E.normLevel(display); if (!n) return 
   const v = E.leadNum(display); if (!isNaN(v)) { L = a.levels.find(l => E.leadNum(l) === v); if (L) return L; } return null; }
 function ensureHeaders() { const h = ['Name', ...S.study.attrs.map(a => a.name)]; S.val.headers.forEach(x => { if (!h.includes(x)) h.push(x); }); S.val.headers = h; }
 function mapValidation() { ensureHeaders(); S.val.products.forEach(p => { p.level = p.level || {}; S.study.attrs.forEach(a => { if (a.type === 'categorical' && (!p.level[a.name] || !a.levels.includes(p.level[a.name]))) p.level[a.name] = bestLevel(a, p.display[a.name]); }); }); }
-function addProducts(list, replace) { if (replace) S.val.products = []; list.forEach(p => { if (!p.name) return; let name = p.name, k = 2; while (S.val.products.some(x => x.name === name)) name = p.name + ' (' + k++ + ')'; S.val.products.push({ name, display: p.display || {}, level: {}, source: p.source || '' }); }); mapValidation(); save(); renderVal(); }
+function addProducts(list, replace) { if (replace) S.val.products = []; list.forEach(p => { if (!p.name) return; let name = p.name, k = 2; while (S.val.products.some(x => x.name === name)) name = p.name + ' (' + k++ + ')'; S.val.products.push({ name, display: p.display || {}, level: {}, source: '' }); }); mapValidation(); save(); renderVal(); }
 function rowsToProducts(rows) { const head = rows[0].map(h => h.trim()); const iN = head.findIndex(h => h.toLowerCase() === 'name'); if (iN < 0) throw new Error('First row needs a "Name" column.');
   head.forEach(h => { if (h && !S.val.headers.includes(h) && h.toLowerCase() !== 'name') S.val.headers.push(h); });
   return rows.slice(1).map(r => ({ name: (r[iN] || '').trim(), display: Object.fromEntries(head.map((h, j) => [h, (r[j] || '').trim()]).filter(([h]) => h && h.toLowerCase() !== 'name')) })); }
@@ -671,7 +671,7 @@ const productJSONSpec = () => `Reply with JSON only:\n{"products":[{"name":"<pro
 let found = [];
 function showFound(list, from) { found = list; $('findOut').innerHTML = `<div class="card" style="margin:0"><h3>${list.length} products found ${esc(from)}: tick the ones to add, check the source links</h3><div class="scroll"><table><tr><th><input type="checkbox" id="fAll" checked></th><th>Name</th>${S.study.attrs.map(a => `<th>${esc(a.name)}</th>`).join('')}<th>Source</th></tr>${list.map((p, i) => `<tr><td><input type="checkbox" data-f="${i}" checked></td><td>${esc(p.name)}</td>${S.study.attrs.map(a => `<td>${esc(p.display[a.name]) || '<span class="pill warn">missing</span>'}</td>`).join('')}<td>${p.source ? `<a href="${esc(p.source)}" target="_blank" rel="noopener">link</a>` : ''}</td></tr>`).join('')}</table></div><div class="row" style="margin-top:8px"><button class="b" id="fAdd">Add ticked products</button></div></div>`;
   $('fAll').onchange = e => document.querySelectorAll('[data-f]').forEach(c => c.checked = e.target.checked);
-  $('fAdd').onclick = () => { const pick = found.filter((_, i) => document.querySelector(`[data-f="${i}"]`).checked); addProducts(pick); msg('findOut', `Added ${pick.length} products. Check and edit them below.`); }; }
+  $('fAdd').onclick = () => { const pick = found.filter((_, i) => document.querySelector(`[data-f="${i}"]`).checked); addProducts(codeNames(pick)); msg('findOut', `Added ${pick.length} products. Check and edit them below.`); }; }
 async function runHelper(btn, prompt, web, from) { const b = $(btn), old = b.textContent; b.disabled = true; b.textContent = 'Working…'; msg('findOut', '');
   try { if (!S.study.attrs.length) throw new Error('Set up the study attributes on page 1 first.'); showFound(parseFound(await helperCall(prompt, web)), from); } catch (e) { msg('findOut', e.message, false); } finally { b.disabled = false; b.textContent = old; } }
 $('assistModel').oninput = e => { S.settings.assistModel = e.target.value; save(); };
@@ -821,12 +821,12 @@ async function doTask(u, t) { const R = resOf(u), ctl = run.ctl[u.key];
     if (!p.answer && S.settings.reask) { const r2 = await callRetry(u, ct.prompt, null, ct, ctl); raw2 = r2.text; p = E.parseFirstSecond(r2.text); }
     R.conjoint[t.id] = { at: new Date().toISOString(), pair: t.pair.pair, order: t.order, answer: p.answer, reason: p.reason, raw: res.text, raw2, served: res.served, ms: res.ms, tin: res.inTok, tout: res.outTok, cost: res.cost }; return !!p.answer; }
   if (t.kind === 'ranking') { const res = await callRetry(u, E.rankingPrompt(S.val.products, showHeaders()), null, { type: 'ranking', products: S.val.products }, ctl); const pr = E.parseRanking(res.text, S.val.products.map(p => p.name));
-    R.ranking[t.id] = { ranking: pr.ranking, valid: pr.valid, warnings: pr.warnings.join('; '), reasoning: pr.reasoning, raw: res.text, served: res.served, cost: res.cost }; return pr.valid; }
+    R.ranking[t.id] = { ranking: pr.ranking, valid: pr.valid, warnings: pr.warnings.join('; '), reasoning: pr.reasoning, raw: res.text, served: res.served, cost: res.cost, tin: res.inTok, tout: res.outTok }; return pr.valid; }
   const page = storePage(t.id), names = S.val.products.map(p => p.name), image = S.tasks.storeMode === 'image';
-  const { res, pc, raw2, cut, cost } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);
+  const { res, pc, raw2, cut, cost, tin, tout } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);
   let mis = null, detail = '';
   if (image && pc.json?.cards) { mis = 0; const notes = []; page.forEach(p => { const c = pc.json.cards.find(x => E.normLevel(x.name) === E.normLevel(p.name)); if (!c) { mis++; notes.push(p.name + ' missing'); return; } showHeaders().slice(1).forEach(h => { const k = Object.keys(c).find(z => E.normLevel(z) === E.normLevel(h)); if (E.normLevel(k ? c[k] : '') !== E.normLevel(p.display[h])) { mis++; notes.push(`${p.name} ${h}: "${k ? c[k] : '—'}"`); } }); }); detail = notes.join('; '); }
-  R.store[t.id] = { order: page.map(p => p.name).join(' | '), choice: pc.choice, position: pc.choice ? page.findIndex(p => p.name === pc.choice) + 1 : null, misreads: mis, misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, at: new Date().toISOString() }; return !!pc.choice; }
+  R.store[t.id] = { order: page.map(p => p.name).join(' | '), choice: pc.choice, position: pc.choice ? page.findIndex(p => p.name === pc.choice) + 1 : null, misreads: mis, misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, tin, tout, at: new Date().toISOString() }; return !!pc.choice; }
 function spent() { let c = 0; Object.values(S.results).forEach(R => { ['conjoint', 'ranking', 'store'].forEach(k => Object.values(R[k] || {}).forEach(x => { c += x.cost || 0; })); Object.values(R.validation?.trials || {}).forEach(x => { c += x.cost || 0; }); }); return c; }
 let capWarned = false;
 async function workPhase(u, tasks, st, ctl, fn) { let next = 0, errRun = 0;
@@ -894,7 +894,7 @@ function renderOne(a) { const P = S.val.products; let h = '';
     <div class="grid2"><div><h3>Variables in the equation</h3><table><tr><th>Term</th><th class="num">B</th><th class="num">S.E.</th><th class="num">Wald</th><th class="num">Sig.</th><th class="num">Exp(B)</th></tr>${f.coefs.map(c => `<tr class="${c.p < .05 ? 'sig' : ''}"><td>${esc(c.term)}</td><td class="num">${fmt(c.B, 5)}</td><td class="num">${fmt(c.SE, 5)}</td><td class="num">${fmt(c.Wald, 3)}</td><td class="num">${fmtP(c.p)}</td><td class="num">${c.ExpB > 1e5 ? c.ExpB.toExponential(2) : fmt(c.ExpB, 3)}</td></tr>`).join('')}</table><p class="hint">Constant = preference for whichever product is listed first, holding attributes equal.</p></div><div><h3>Relative importance (utility range)</h3>${impBars(f.importance)}<p class="hint">Continuous: |B| × tested range. Categorical: range of level effects (reference = 0).</p></div></div></div>`; }
   else if (a.fitError) h += `<div class="card"><div class="msg err">${esc(a.fitError)}</div></div>`;
   if (P.length && (a.pred || a.avgRank || a.share)) h += `<div class="card"><h2>Does the conjoint predict what the model does?</h2><div class="stats">${[['Predicted vs ranking (ρ)', a.rhoRank], ['Predicted vs storefront (ρ)', a.rhoStore], ['Ranking vs storefront (ρ)', a.rhoRankStore]].map(([k, v]) => `<div class="stat"><b>${v == null || isNaN(v) ? '—' : v.toFixed(2)}</b><span>${k}</span></div>`).join('')}${a.top1 != null ? `<div class="stat"><b>${(100 * a.top1).toFixed(0)}%</b><span>storefront picks of the predicted best (${esc(a.bestName)})</span></div>` : ''}${a.misreadRate != null ? `<div class="stat"><b>${(100 * a.misreadRate).toFixed(0)}%</b><span>trials with a misreading</span></div>` : ''}</div>
-    <table><tr><th>Product</th>${a.pred ? '<th class="num">Predicted utility</th><th class="num">Predicted rank</th>' : ''}${a.avgRank ? `<th class="num">Mean rank (${a.nRank} rankings)</th><th class="num">#1 finishes</th>` : ''}${a.share ? `<th class="num">Storefront share (${a.nStore})</th>` : ''}</tr>${P.map((p, i) => `<tr><td>${esc(p.name)}</td>${a.pred ? `<td class="num">${fmt(a.pred[i])}</td><td class="num">${a.predRank[i]}</td>` : ''}${a.avgRank ? `<td class="num">${fmt(a.avgRank[i], 2)}</td><td class="num">${a.firstCount[i]}</td>` : ''}${a.share ? `<td class="num">${(100 * a.share[i]).toFixed(1)}%</td>` : ''}</tr>`).join('')}</table>
+    <table><tr><th>Product</th>${a.pred ? '<th class="num">Predicted utility</th><th class="num">Predicted rank</th>' : ''}${a.avgRank ? `<th class="num">Mean rank in ranking task (${a.nRank} rankings)</th><th class="num">Ranked #1 (of ${a.nRank} rankings)</th>` : ''}${a.share ? `<th class="num">Storefront picks (share of ${a.nStore} trials)</th>` : ''}</tr>${P.map((p, i) => `<tr><td>${esc(p.name)}</td>${a.pred ? `<td class="num">${fmt(a.pred[i])}</td><td class="num">${a.predRank[i]}</td>` : ''}${a.avgRank ? `<td class="num">${fmt(a.avgRank[i], 2)}</td><td class="num">${a.firstCount[i]}</td>` : ''}${a.share ? `<td class="num">${(100 * a.share[i]).toFixed(1)}%</td>` : ''}</tr>`).join('')}</table>
     ${acesResultsHTML(a)}${a.posShare ? `<h3>Storefront picks by page position</h3><p class="hint">${a.posShare.map((s, k) => `pos ${k + 1}: ${(100 * s).toFixed(1)}%`).join(' · ')} (even split = ${(100 / P.length).toFixed(1)}%)</p>` : ''}</div>`;
   return h; }
 function renderCompare(A, title) { if (!A.length) return '<p class="hint">Nothing analysed for this view yet.</p>'; const withFit = A.filter(a => a.fit);
@@ -908,10 +908,10 @@ function renderCompare(A, title) { if (!A.length) return '<p class="hint">Nothin
   return h; }
 
 // ================= 8 EXPORT & DATA =================
-const PARTS = [['summary', 'Summary (fit and prediction per run)'], ['coefs', 'Coefficients'], ['importance', 'Relative importance'], ['predictions', 'Product predictions vs actual'], ['conjoint', 'Conjoint data (long, SPSS/R-ready)'], ['ranking', 'Ranking runs'], ['store', 'Storefront trials'], ['validation', 'Validation check (every answer)'], ['spss', 'SPSS syntax'], ['study', 'Study setup (attributes, products, settings)']];
-function renderExportParts() { $('expParts').innerHTML = PARTS.map(([k, l]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" data-part="${k}" ${['summary', 'coefs', 'importance', 'predictions'].includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join(''); }
+const PARTS = [['plain', 'Plain-English summary'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['valsummary', 'Validation check: results per model'], ['coefs', 'Coefficients'], ['importance', 'Relative importance'], ['predictions', 'Product predictions vs actual'], ['conjoint', 'Conjoint data (long, SPSS/R-ready)'], ['ranking', 'Ranking runs'], ['store', 'Storefront trials'], ['validation', 'Validation check: every answer'], ['spss', 'SPSS syntax'], ['study', 'Study setup (attributes, products, settings)']];
+function renderExportParts() { $('expParts').innerHTML = PARTS.map(([k, l]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" data-part="${k}" ${['plain', 'summary', 'coefs', 'importance', 'predictions', 'valsummary'].includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join(''); }
 $('expAll').onclick = () => document.querySelectorAll('[data-part]').forEach(c => c.checked = true);
-function partRows(k) { const U = units(), F = u => S.fits[u.key];
+function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];
   if (k === 'summary') return U.filter(F).map(u => { const a = F(u); return { Run: u.label, Model: u.m.model, Condition: u.c.label, AnsweredPairs: a.fit?.n ?? '', ChoseFirstPct: a.fit ? +(100 * a.fit.firstShare).toFixed(2) : '', Constant: a.fit?.coefs[0].B ?? '', Constant_p: a.fit?.coefs[0].p ?? '', Nagelkerke: a.fit?.nagelkerke ?? '', Rho_pred_ranking: a.rhoRank ?? '', Rho_pred_storefront: a.rhoStore ?? '', Rho_ranking_storefront: a.rhoRankStore ?? '', PredictedBestPickedPct: a.top1 != null ? +(100 * a.top1).toFixed(2) : '', MisreadTrialsPct: a.misreadRate != null ? +(100 * a.misreadRate).toFixed(2) : '' }; });
   if (k === 'coefs') return U.filter(u => F(u)?.fit).flatMap(u => F(u).fit.coefs.map(c => ({ Run: u.label, Term: c.term, B: c.B, SE: c.SE, Wald: c.Wald, p: c.p, ExpB: c.ExpB })));
   if (k === 'importance') return U.filter(u => F(u)?.fit).flatMap(u => F(u).fit.importance.map(i => ({ Run: u.label, Attribute: i.attr, Range: i.range, ImportancePct: +i.pct.toFixed(3), Detail: i.detail })));
@@ -920,6 +920,12 @@ function partRows(k) { const U = units(), F = u => S.fits[u.key];
   if (k === 'ranking') return U.flatMap(u => Object.entries(S.results[u.key]?.ranking || {}).map(([id, v]) => ({ Run: u.label, RankingRun: id, Valid: v.valid ? 1 : 0, Ranking: v.ranking.join(' | '), Warnings: v.warnings, Reasoning: v.reasoning, Raw: v.raw, Served: v.served })));
   if (k === 'store') return U.flatMap(u => Object.entries(S.results[u.key]?.store || {}).map(([id, v]) => ({ Run: u.label, Trial: id, PageOrder: v.order, Choice: v.choice ?? '', Position: v.position ?? '', Row: v.row ?? '', Col: v.col ?? '', Misreads: v.misreads ?? '', MisreadDetail: v.misread_detail, CartClickOK: v.cart_ok ?? '', Issues: v.issues ?? '', ReportedArgs: v.args ? JSON.stringify(v.args) : '', Raw: v.raw, ReAskAnswer: v.raw2 ?? '', CutOff: v.cut ? 1 : 0, Served: v.served, Cost: v.cost ?? '', InTokens: v.tin ?? '', OutTokens: v.tout ?? '' })));
   if (k === 'validation') return valRows();
+  if (k === 'valsummary') return validationSummaryRows();
+  if (k === 'plain') return plainRows();
+  if (k === 'holds') return holdsRows();
+  if (k === 'similarity') return similarityRows();
+  if (k === 'positions') return positionRows();
+  if (k === 'clogit') return clogitRows();
   if (k === 'study') return [...S.study.attrs.map(a => ({ Section: 'Attribute', Name: a.name, Detail: a.kind === 'range' ? `${a.min}–${a.max}` : a.levels.join(' | '), Type: a.type + (a.isPrice ? ', price' : '') })), ...S.val.products.map(p => ({ Section: 'Product', Name: p.name, Detail: showHeaders().slice(1).map(h => `${h}: ${p.display[h] ?? ''}`).join('; '), Type: p.source || '' })), { Section: 'Settings', Name: 'Pairs / seed / counterbalance', Detail: `${S.study.iterations} / ${S.study.seed} / ${S.study.counterbalance}`, Type: '' }, ...S.conditions.map(c => ({ Section: 'Condition', Name: c.label, Detail: 'temperature ' + (c.temperature || S.settings.temperature || 'model default'), Type: '' }))];
   return []; }
 const spssText = () => E.spssPerModel(S.study.attrs).replace(/ChoseFirst/g, 'ChoseFirst') + '\n\n' + E.spssPooled(units().map(u => u.label), S.study.attrs).replace(/Model = "/g, 'Run = "');
@@ -979,7 +985,7 @@ E10,Nook GlowLight 4 Plus,7.8 inches,E Ink Carta,300 PPI,32 GB,Waterproof (IPX7)
 const S3_MODELS = [
   { provider: 'openai', model: 'gpt-4o-2024-11-20', label: 'GPT-4o (2024-11-20)', pin: 2.5, pout: 10 },
   { provider: 'openai', model: 'gpt-4o-mini', label: 'GPT-4o mini', pin: 0.15, pout: 0.6 },
-  { provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', pin: 0.1, pout: 0.5 },
+  { provider: 'openai', model: 'gpt-6-luna', label: 'GPT-6 Luna', pin: 0.05, pout: 0.25 },
   { provider: 'anthropic', model: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', pin: 0.1, pout: 0.5 },
   { provider: 'anthropic', model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', pin: 1, pout: 5 },
   { provider: 'anthropic', model: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', pin: 2, pout: 10 },
@@ -998,10 +1004,10 @@ function loadStudy3() {
 // ---------- one storefront trial, v3 method, on any product set (main run uses v3's own code path) ----------
 async function storeTrialV3(u, trial, products, store, ctl, salt) {
   const page = E.shuffle(products, E.rng((+S.study.seed || 1) * 100003 + trial + (salt || 0))), names = products.map(p => p.name), image = S.tasks.storeMode !== 'text';
-  const { res, pc, raw2, cut, cost } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);
+  const { res, pc, raw2, cut, cost, tin, tout } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);
   let mis = null, detail = '';
   if (image && pc.json?.cards) { mis = 0; const notes = []; page.forEach(p => { const c = pc.json.cards.find(x => E.normLevel(x.name) === E.normLevel(p.name)); if (!c) { mis++; notes.push(p.name + ' missing'); return; } showHeaders().slice(1).forEach(h => { const k = Object.keys(c).find(z => E.normLevel(z) === E.normLevel(h)); if (E.normLevel(k ? c[k] : '') !== E.normLevel(p.display[h])) { mis++; notes.push(`${p.name} ${h}: "${k ? c[k] : '—'}"`); } }); }); detail = notes.join('; '); }
-  store[trial] = { order: page.map(p => p.name).join(' | '), choice: pc.choice, position: pc.choice ? page.findIndex(p => p.name === pc.choice) + 1 : null, misreads: mis, misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, at: new Date().toISOString() };
+  store[trial] = { order: page.map(p => p.name).join(' | '), choice: pc.choice, position: pc.choice ? page.findIndex(p => p.name === pc.choice) + 1 : null, misreads: mis, misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, tin, tout, at: new Date().toISOString() };
   return !!pc.choice; }
 
 // ---------- lock the conjoint prediction before the storefront ----------
@@ -1032,7 +1038,7 @@ async function runValidation() { if (run.active) return; const U = units().filte
   const N = +S.settings.validationTrials || 10;
   log(`Validation check: ${dominant} is best on every attribute with a clear direction; the rest are worst. ${N} storefront trials per model.`);
   run.active = true; run.paused = false; globalStop = false; capWarned = false; $('startAll').disabled = true; $('runValidation').disabled = true; $('pauseAll').disabled = false; $('stopAll').disabled = false;
-  U.forEach(u => { resOf(u).validation = { dominant, trials: {} }; }); renderValidation();
+  U.forEach(u => { const R = resOf(u); if (R.validation && Object.keys(R.validation.trials || {}).length) R.validationHistory = [...(R.validationHistory || []), R.validation]; R.validation = { dominant, trials: {}, at: new Date().toISOString() }; }); renderValidation();
   const tick = setInterval(() => { renderProgress(); renderValidation(); }, 600);
   await Promise.all(U.map(async u => { const R = resOf(u); const ctl = run.ctl[u.key] = { stop: false }, st = run.stats[u.key] = { total: N, done: 0, ok: 0, bad: 0, err: 0, status: 'validation' };
     await workPhase(u, Array.from({ length: N }, (_, i) => ({ id: i + 1 })), st, ctl, t => storeTrialV3(u, t.id, prods, R.validation.trials, ctl, 99991));
@@ -1462,10 +1468,10 @@ async function googleGenerate(url, body) {
 
 // ---------- storefront answer: re-ask once when no choice can be read (e.g. the answer was cut off) ----------
 async function storeAsk(u, prompt, image, simTask, ctl, names) {
-  const res = await callRetry(u, prompt, image, simTask, ctl); let pc = E.parseChoiceName(res.text, names), raw2 = null, cut = !!res.truncated, cost = res.cost;
+  const res = await callRetry(u, prompt, image, simTask, ctl); let pc = E.parseChoiceName(res.text, names), raw2 = null, cut = !!res.truncated, cost = res.cost, tin = res.inTok ?? null, tout = res.outTok ?? null;
   if (!pc.choice && S.settings.reask && !ctl.stop) { const r2 = await callRetry(u, prompt, image, simTask, ctl); raw2 = r2.text; cut = cut || !!r2.truncated;
-    if (r2.cost != null) cost = (cost || 0) + r2.cost; const p2 = E.parseChoiceName(r2.text, names); if (p2.choice) pc = p2; }
-  return { res, pc, raw2, cut, cost }; }
+    if (r2.cost != null) cost = (cost || 0) + r2.cost; if (r2.inTok != null) { tin = (tin || 0) + r2.inTok; tout = (tout || 0) + (r2.outTok || 0); } const p2 = E.parseChoiceName(r2.text, names); if (p2.choice) pc = p2; }
+  return { res, pc, raw2, cut, cost, tin, tout }; }
 
 // ---------- validation panel (Run page): the test page, and every answer as it comes in ----------
 function valReason(t, dominant) {
@@ -1474,10 +1480,11 @@ function valReason(t, dominant) {
   if (!t.choice) return 'No readable choice in the answer';
   return `Picked ${t.choice} instead`; }
 function valRows() { const out = [];
-  units().filter(u => u.m.provider !== 'import').forEach(u => { const V = resOf(u).validation; if (!V) return;
+  (typeof expUnits === 'function' ? expUnits() : units()).filter(u => u.m.provider !== 'import').forEach(u => { const R = resOf(u); [...(R.validationHistory || []), R.validation].filter(Boolean).forEach(V => {
     Object.entries(V.trials || {}).sort((a, b) => +a[0] - +b[0]).forEach(([id, t]) => { const order = (t.order || '').split(' | ');
-      out.push({ Model: u.label, Trial: +id, BestProduct: V.dominant, BestProductPosition: order.indexOf(V.dominant) + 1 || '', Picked: t.choice ?? '', Correct: t.choice === V.dominant ? 1 : 0, Reason: valReason(t, V.dominant), CutOff: t.cut ? 1 : 0, MisreadCards: t.misreads ?? '', MisreadDetail: t.misread_detail || '', PageOrder: t.order || '', Answer: t.raw ?? '', ReAskAnswer: t.raw2 ?? '', Served: t.served ?? '', At: t.at || '' }); }); });
+      out.push({ Model: u.label, CheckedAt: V.at || '', Trial: +id, BestProduct: V.dominant, BestProductPosition: order.indexOf(V.dominant) + 1 || '', Picked: t.choice ?? '', Correct: t.choice === V.dominant ? 1 : 0, Reason: valReason(t, V.dominant), CutOff: t.cut ? 1 : 0, MisreadCards: t.misreads ?? '', MisreadDetail: t.misread_detail || '', PageOrder: t.order || '', Answer: t.raw ?? '', ReAskAnswer: t.raw2 ?? '', Served: t.served ?? '', At: t.at || '' }); }); }); });
   return out; }
+let valPageHTML = '';
 function renderValidation() { const el = $('valPanel'); if (!el) return;
   const { prods, dominant } = (S.val.products.length > 1 ? validationProducts() : {}); const U = units().filter(u => u.m.provider !== 'import'), anyRun = U.some(u => resOf(u).validation);
   let h = `<h2>Validation check</h2><p class="hint">Before the real run, each model shops a <b>test page</b> where one product is clearly best: <b>${esc(dominant || 'the first product')}</b> gets the best level of every attribute with a clear "better" direction and every other product gets the worst. Attributes with no clear direction are the same on every card. A model that reads the page and chooses sensibly picks ${esc(dominant || 'it')} every time. Your real products and design are not changed.</p>`;
@@ -1492,22 +1499,23 @@ function renderValidation() { const el = $('valPanel'); if (!el) return;
       <table><tr><th class="num">Trial</th><th class="num">Where ${esc(V.dominant)} was</th><th>Picked</th><th>Result</th><th class="num">Misread cards</th><th>Answer</th></tr>${T.map(([id, t]) => { const pos = (t.order || '').split(' | ').indexOf(V.dominant) + 1;
         return `<tr><td class="num">${id}</td><td class="num">${pos ? 'position ' + pos : ''}</td><td>${esc(t.choice || '—')}</td><td>${t.choice === V.dominant ? '✓' : '✕ ' + esc(valReason(t, V.dominant))}</td><td class="num">${t.misreads ?? '—'}</td><td><details><summary>show</summary><pre class="valraw">${esc(String(t.raw ?? '').slice(0, 3000))}${t.raw2 != null ? '\n\n--- asked again ---\n' + esc(String(t.raw2).slice(0, 3000)) : ''}</pre></details></td></tr>`; }).join('')}</table></details>`; });
   if (!anyRun) h += '<p class="hint">Not run yet. It runs first in ▶ Launch study, or on its own with the Validation check button above.</p>';
-  el.innerHTML = h;
+  el.innerHTML = h; if (valPageHTML && $('valPage')) $('valPage').innerHTML = valPageHTML;
   if ($('valShowPage')) $('valShowPage').onclick = () => { const P = E.shuffle(prods, E.rng(((+S.study.seed || 1) * 100003) + 1 + 99991));
-    $('valPage').innerHTML = S.tasks.storeMode === 'image' ? `<p class="hint">One test page as the model sees it (the order is reshuffled each trial):</p><img src="${drawPage(P)}" style="max-width:100%;border:1px solid #ddd;border-radius:8px">` : `<div class="preview">${esc(E.storefrontTextPrompt(S.study.product, P, showHeaders()))}</div>`; };
+    valPageHTML = $('valPage').innerHTML = S.tasks.storeMode === 'image' ? `<p class="hint">One test page as the model sees it (the order is reshuffled each trial):</p><img src="${drawPage(P)}" style="max-width:100%;border:1px solid #ddd;border-radius:8px">` : `<div class="preview">${esc(E.storefrontTextPrompt(S.study.product, P, showHeaders()))}</div>`; };
   if ($('valCSV')) $('valCSV').onclick = () => download(`validation_${fn(S.projName)}_${stamp()}.csv`, E.toCSV(valRows()), 'text/csv'); }
 
 // ---------- product finder: progress box with timer and Cancel ----------
-let helperAbort = null;
+let helperAbort = null, helperQueries = [];
 runHelper = async function (btn, prompt, web, from) { const b = $(btn), old = b.textContent; b.disabled = true; b.textContent = 'Working…';
-  const { model } = helperChoice(), t0 = Date.now(); helperAbort = new AbortController();
-  $('findOut').innerHTML = `<div class="helperbusy"><span class="spin"></span><div><b>${web ? 'Searching the web' : 'Reading the text'} with ${esc(model || 'the helper model')}… <span id="hTimer">0:00</span></b><br><span class="hint">This usually takes 30 seconds to 2 minutes. The products it finds will appear here as a table: tick the ones you want and press Add. Nothing is added until you do.</span></div><button class="b sec" id="hCancel">Cancel</button></div>`;
+  const { model } = helperChoice(), t0 = Date.now(); helperAbort = new AbortController(); helperQueries = [];
+  $('findOut').innerHTML = `<div class="helperbusy"><span class="spin"></span><div><b>${web ? 'Searching the web' : 'Reading the text'} with ${esc(model || 'the helper model')}… <span id="hTimer">0:00</span></b><br><span>${web ? `Looking for up to ${esc($('findN')?.value || '10')} real ${esc(S.study.product || 'product')}s${($('findHint')?.value || '').trim() ? ' · hints: ' + esc($('findHint').value.trim()) : ''} · filling in: ${S.study.attrs.map(a => esc(a.name)).join(', ')}` : `Pulling every ${esc(S.study.product || 'product')} and its ${S.study.attrs.map(a => esc(a.name)).join(', ')} out of the text`}</span><br><span class="hint">This usually takes 30 seconds to 2 minutes. The products it finds will appear here as a table: tick the ones you want and press Add. Nothing is added until you do.</span></div><button class="b sec" id="hCancel">Cancel</button></div>`;
   const tm = setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); if ($('hTimer')) $('hTimer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 500);
   $('hCancel').onclick = () => helperAbort?.abort();
   try { if (!S.study.attrs.length) throw new Error('Set up the study attributes on page 1 first.');
     const list = parseFound(await helperCall(prompt, web)); const secs = Math.round((Date.now() - t0) / 1000);
     if (!list.length) throw new Error('The helper model found no products. Try different search hints or another helper model.');
-    showFound(list, from); $('findOut').insertAdjacentHTML('afterbegin', `<div class="msg ok">Found ${list.length} product${list.length === 1 ? '' : 's'} in ${secs} s. Check each value against its source link, tick the ones you want, then press Add.</div>`); }
+    showFound(list, from); const q = helperQueries.length ? `<br><span class="hint">Web searches it ran: ${helperQueries.map(x => '“' + esc(x) + '”').join(', ')}</span>` : '';
+    $('findOut').insertAdjacentHTML('afterbegin', `<div class="msg ok">Found ${list.length} product${list.length === 1 ? '' : 's'} in ${secs} s. Check each value against its source link, tick the ones you want, then press Add. Added products get a code name (P01, P02…) so the AI never sees the brand; the real name goes in "Brand and model" and the link is not kept.${q}</div>`); }
   catch (e) { msg('findOut', helperAbort?.signal.aborted ? 'Cancelled. Nothing was added.' : e.message, false); }
   finally { clearInterval(tm); helperAbort = null; b.disabled = false; b.textContent = old; } };
 
@@ -1526,6 +1534,88 @@ function initV54() { keysFirst(); renderValidation(); }
   .spin{width:22px;height:22px;border:3px solid #d8d5ce;border-top-color:#2f5d4e;border-radius:50%;animation:spin 0.9s linear infinite;flex:none} @keyframes spin{to{transform:rotate(360deg)}}
   .valmodel{border:1px solid var(--line,#ddd);border-radius:10px;padding:8px 12px;margin-top:10px;background:#fff} .valmodel>summary{cursor:pointer}
   .valmodel table{margin-top:8px} pre.valraw{white-space:pre-wrap;max-width:560px;max-height:260px;overflow:auto;font-size:12px;background:#f6f5f1;padding:8px;border-radius:6px}`; document.head.appendChild(st); })();
+
+// ================= v5.4 (b): exports for every view, per model; prices and costs; alerts; pilot banner; validation history =================
+
+// ---------- which runs an export covers: all, or one model ----------
+function expUnits() { const sel = $('expModel')?.value || 'all'; return units().filter(u => sel === 'all' || u.key === sel); }
+function renderExpModel() { const el = $('expModel'); if (!el) return; const cur = el.value || 'all';
+  el.innerHTML = `<option value="all">All models</option>` + units().map(u => `<option value="${esc(u.key)}">${esc(u.label)}</option>`).join(''); el.value = [...el.options].some(o => o.value === cur) ? cur : 'all'; }
+
+// ---------- extra export parts: everything shown on Results and Run ----------
+function plainRows() { const A = expUnits().map(u => S.fits[u.key]).filter(Boolean), out = [];
+  A.forEach(a => { if (a.fit) { topAttrs(a.fit, 3).forEach((t, i) => { const at = S.study.attrs.find(x => x.name === t.attr); out.push({ Run: a.label, Question: 'What it cares about most', Rank: i + 1, Attribute: t.attr, ImportancePct: +t.pct.toFixed(2), Answer: at ? attrPreference(a.fit, at).text : '' }); });
+      out.push({ Run: a.label, Question: 'Does it favour whatever is listed first?', Rank: '', Attribute: '', ImportancePct: '', Answer: `Chose the first-listed product ${(100 * a.fit.firstShare).toFixed(1)}% (constant p ${a.fit.coefs[0].p < .001 ? '< .001' : '= ' + a.fit.coefs[0].p.toFixed(3)})` }); }
+    const v = verdictOf(a.rhoStore); if (v) out.push({ Run: a.label, Question: 'Did its conjoint predict what it bought?', Rank: '', Attribute: '', ImportancePct: '', Answer: `${v.word} (rho = ${a.rhoStore.toFixed(3)}; predicted favourite ${a.bestName} picked in ${(100 * a.top1).toFixed(1)}% of ${a.nStore} trials)` }); });
+  const W = A.filter(a => a.fit); if (W.length > 1) S.study.attrs.forEach(at => { const prs = W.map(a => attrPreference(a.fit, at)), t = prs.map(p => p.text);
+    out.push({ Run: 'All models shown', Question: 'Holds across models?', Rank: '', Attribute: at.name, ImportancePct: '', Answer: prs.every(p => p.sig) && t.every(x => x === t[0]) ? 'Same in every model: ' + t[0] : W.map((a, i) => `${a.label}: ${t[i]}`).join('; ') }); });
+  return out; }
+function holdsRows() { const W = expUnits().map(u => S.fits[u.key]).filter(a => a && a.fit); if (!W.length) return [];
+  return W[0].fit.coefs.map((c0, j) => { const cs = W.map(a => a.fit.coefs[j]), pos = cs.filter(c => c && c.p < .05 && c.B > 0).length, neg = cs.filter(c => c && c.p < .05 && c.B < 0).length, o = { Term: c0.term };
+    W.forEach((a, i) => { o[a.label + ' B'] = cs[i]?.B ?? ''; o[a.label + ' p'] = cs[i]?.p ?? ''; }); o.HoldsIn = pos === cs.length ? `+ ${pos}/${cs.length}` : neg === cs.length ? `- ${neg}/${cs.length}` : `${Math.max(pos, neg)}/${cs.length}`; return o; }); }
+function similarityRows() { const W = expUnits().map(u => S.fits[u.key]).filter(a => a && a.pred); return W.map(a => Object.fromEntries([['Run', a.label], ...W.map(b => [b.label, +E.spearman(a.pred, b.pred).toFixed(4)])])); }
+function positionRows() { const out = []; expUnits().forEach(u => { const a = S.fits[u.key]; if (!a?.posShare) return; a.posShare.forEach((s, k) => out.push({ Run: u.label, Position: k + 1, SharePct: +(100 * s).toFixed(2), EvenSplitPct: +(100 / a.posShare.length).toFixed(2) })); }); return out; }
+function clogitRows() { const out = []; expUnits().forEach(u => { const c = S.fits[u.key]?.clogit; if (!c) return; if (c.error) { out.push({ Run: u.label, Term: '', Note: c.error }); return; }
+  c.terms.forEach(t => out.push({ Run: u.label, Term: t.term, B: t.B, SE: t.SE, z: t.z, p: t.p, OddsRatio: t.OR, Trials: c.n, PseudoR2: c.r2, Reference: c.ref, NeverChosen: (c.never || []).join(' | ') })); }); return out; }
+function validationSummaryRows() { const out = []; expUnits().filter(u => u.m.provider !== 'import').forEach(u => { const R = resOf(u); [...(R.validationHistory || []), ...(R.validation && !R.validation.archived ? [R.validation] : [])].forEach(V => { const T = Object.values(V.trials || {});
+  out.push({ Run: u.label, CheckedAt: V.at || '', BestProduct: V.dominant, Trials: T.length, PickedBest: T.filter(t => t.choice === V.dominant).length, PickedOther: T.filter(t => t.choice && t.choice !== V.dominant).length, NoReadableChoice: T.filter(t => !t.choice && !t.cut).length, CutOff: T.filter(t => !t.choice && t.cut).length, Result: T.length && T.every(t => t.choice === V.dominant) ? 'PASS' : 'CHECK' }); }); }); return out; }
+
+// ---------- prices per model: costs from saved token counts ----------
+function priced(m) { return m.provider === 'sim' || m.provider === 'import' || m.provider === 'openrouter' || (m.pin != null && m.pout != null && m.pin !== '' && m.pout !== ''); }
+function recost(m) { if (m.provider === 'openrouter' || m.provider === 'sim') return; units().filter(u => u.m === m).forEach(u => { const R = resOf(u);
+  ['conjoint', 'ranking', 'store'].forEach(k => Object.values(R[k] || {}).forEach(x => { if (x.tin != null) x.cost = costFromTokens(m, x.tin, x.tout); }));
+  [...(R.validationHistory || []), R.validation].filter(Boolean).forEach(V => Object.values(V.trials || {}).forEach(x => { if (x.tin != null) x.cost = costFromTokens(m, x.tin, x.tout); })); }); }
+function noTokenCalls(m) { let n = 0; units().filter(u => u.m === m).forEach(u => { const R = resOf(u); ['conjoint', 'ranking', 'store'].forEach(k => Object.values(R[k] || {}).forEach(x => { if (x.tin == null && x.cost == null) n++; })); }); return n; }
+function renderPrices() { const tbl = $('modelTable')?.querySelector('table'); if (!tbl || tbl.dataset.priced) return; tbl.dataset.priced = 1;
+  tbl.rows[0].insertCell(4).outerHTML = '<th class="num">US$ per 1M tokens in / out <span class="info" data-tip="List price from the provider\'s pricing page. OpenAI, Anthropic and Google do not report cost, so the Lab counts tokens × these prices. Leave blank and spend is not counted for that model. Changing a price re-costs every call already made that saved its token counts.">i</span></th>';
+  S.models.forEach((m, i) => { const row = tbl.rows[i + 1]; if (!row) return; const c = row.insertCell(4); c.className = 'num';
+    c.innerHTML = m.provider === 'openrouter' ? '<span class="hint">reported by OpenRouter</span>' : m.provider === 'sim' || m.provider === 'import' ? '' :
+      `<input data-pin="${i}" type="number" min="0" step="0.01" style="width:70px" value="${m.pin ?? ''}"> / <input data-pout="${i}" type="number" min="0" step="0.01" style="width:70px" value="${m.pout ?? ''}">${priced(m) ? '' : ' <span class="pill warn">no price: spend not counted</span>'}`; });
+  tbl.querySelectorAll('[data-pin],[data-pout]').forEach(inp => inp.onchange = () => { const m = S.models[+(inp.dataset.pin ?? inp.dataset.pout)], v = inp.value === '' ? null : +inp.value;
+    if (inp.dataset.pin != null) m.pin = v; else m.pout = v; recost(m); save(); renderModels(); renderRun?.(); const miss = noTokenCalls(m); if (miss) log(`${m.label}: ${miss} earlier calls saved no token counts, so their cost can't be worked out.`); }); }
+function priceWarning() { const miss = S.models.filter(m => !priced(m)); return miss.length ? `<div class="msg err">No price set for ${miss.map(m => esc(m.label)).join(', ')}, so their spend is not counted and the spend cap can't protect you. Add prices on page 4.</div>` : ''; }
+
+// ---------- alerts: sound, browser notification, tab title ----------
+const baseTitle = document.title;
+function alertDone(title, body) { try { const ac = new (window.AudioContext || window.webkitAudioContext)(); [0, .18].forEach((t, i) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = i ? 880 : 660; g.gain.setValueAtTime(.18, ac.currentTime + t); g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + t + .25); o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + .3); }); } catch (e) {}
+  try { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body }); } catch (e) {}
+  document.title = '✓ ' + title + ' – ' + baseTitle; }
+function askNotify() { try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {} }
+window.addEventListener('focus', () => { if (document.title !== baseTitle) setTimeout(() => { document.title = baseTitle; }, 4000); });
+
+// ---------- after a run: clear banner (pilot complete → check Results → full run) ----------
+function runBanner(kind) { const el = $('runBanner'); if (!el) return; if (!kind) { el.innerHTML = ''; return; }
+  const U = units().filter(u => u.m.provider !== 'import'), calls = U.reduce((t, u) => { const R = resOf(u); return t + ['conjoint', 'ranking', 'store'].reduce((s, k) => s + Object.keys(R[k] || {}).length, 0); }, 0);
+  el.innerHTML = kind === 'pilot' ? `<div class="banner ok"><b>✓ Pilot complete</b> (${calls} calls so far across ${U.length} model${U.length === 1 ? '' : 's'}, $${spent().toFixed(2)} spent).<br>1) Check the <a href="#" data-go="results">Results page</a>: press Analyse and look at the summary. 2) When it looks right, press <b>▶ Launch full run</b>. The full run carries on from where the pilot stopped.<div class="row" style="margin-top:8px"><button class="b sec" data-go="results">Go to Results</button><button class="b" id="fullGo">▶ Launch full run</button></div></div>`
+    : kind === 'full' ? `<div class="banner ok"><b>✓ Full run complete</b> (${calls} calls, $${spent().toFixed(2)} spent). Go to <a href="#" data-go="results">Results</a> and press Analyse, then Export or Verify.</div>`
+    : `<div class="banner">■ Run stopped (${calls} calls so far). Press Start / resume or ▶ Launch study to carry on.</div>`;
+  el.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.go); });
+  if ($('fullGo')) $('fullGo').onclick = () => { S.settings.runSize = 'full'; syncV5?.(); save(); runBanner(null); $('startAll').click(); }; }
+
+// ---------- Start / resume: validation first for any model that has not passed; banner and alert at the end ----------
+function needsValidation() { return S.tasks.store && S.val.products.length > 1 ? units().filter(u => u.m.provider !== 'import' && u.m.provider !== 'sim').filter(u => { const V = resOf(u).validation, T = Object.values(V?.trials || {}); return !T.length || !T.every(t => t.choice === V.dominant); }) : []; }
+function wrapStart() { const btn = $('startAll'), orig = btn.onclick; if (!orig || btn.dataset.wrapped) return; btn.dataset.wrapped = 1;
+  btn.onclick = async (...a) => { if (run.active) return; askNotify(); runBanner(null);
+    if (!launching && needsValidation().length) { log(`Validation check first for: ${needsValidation().map(u => u.label).join(', ')}.`); await runValidation(); showValidationOutcome();
+      const bad = needsValidation(); if (bad.length && !confirmV5(`${bad.map(u => `${u.label}: ${resOf(u).validation?.hit ?? 0}/${resOf(u).validation?.n ?? 0}`).join('\n')}\n\nThese models did not pick the best product every time in the validation check. Each answer, and why it missed, is in the Validation check panel below the run table (Cancel to look first).\n\nCarry on with the run anyway?`)) return log('■ Run not started. See the Validation check panel.'); }
+    const size = S.settings.runSize; await orig.apply(btn, a);
+    if (globalStop) { runBanner('stopped'); alertDone('Run stopped', 'The run was stopped.'); return; }
+    runBanner(size === 'pilot' ? 'pilot' : 'full'); alertDone(size === 'pilot' ? 'Pilot complete' : 'Full run complete', size === 'pilot' ? 'Check Results, then launch the full run.' : 'Go to Results and press Analyse.'); }; }
+function showValidationOutcome() { const U = units().filter(u => u.m.provider !== 'import'), ok = U.filter(u => { const V = resOf(u).validation, T = Object.values(V?.trials || {}); return T.length && T.every(t => t.choice === V.dominant); });
+  alertDone('Validation check done', `${ok.length}/${U.length} models passed.`); $('valPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+
+function initV54b() {
+  const parts = $('expParts'); if (parts && !$('expModel')) parts.insertAdjacentHTML('beforebegin', '<div class="row" style="margin-top:10px"><label>Models <select id="expModel"></select></label><span class="hint">Export every model together, or one model on its own.</span></div>');
+  renderExpModel(); const _st = showTab; showTab = function (t) { _st(t); if (t === 'data') renderExpModel(); };
+  const mp = $('modelProgress'); if (mp && !$('runBanner')) mp.insertAdjacentHTML('beforebegin', '<div id="runBanner"></div>');
+  wrapStart(); const _rm = renderModels; renderModels = function () { _rm(); renderPrices(); }; renderPrices();
+  const _rr = renderRun; renderRun = function () { _rr(); const pw = $('priceWarn') || (() => { $('runPlan')?.insertAdjacentHTML('afterend', '<div id="priceWarn"></div>'); return $('priceWarn'); })(); if (pw) pw.innerHTML = priceWarning(); };
+  const st = document.createElement('style'); st.textContent = `.banner{border:1px solid #d8d5ce;border-radius:10px;padding:12px 14px;margin:10px 0;background:#fafaf7}.banner.ok{background:#e8f4ed;border-color:#b9dcc8}`; document.head.appendChild(st); }
+
+// ---------- products found online: code names so the AI never sees the brand; no links kept ----------
+function codeNames(list) { if (!S.val.headers.includes('Brand and model')) S.val.headers.push('Brand and model');
+  let k = 1; const next = () => { let n; do { n = 'P' + String(k++).padStart(2, '0'); } while (S.val.products.some(x => x.name === n)); return n; };
+  return list.map(p => ({ name: next(), display: { ...(p.display || {}), 'Brand and model': p.name } })); }
 
 // ================= v5.4: product-finder helper model, chosen from a dropdown of the providers you have keys for =================
 // Optional, setup only: the helper finds real products and their attributes. It is never used for the conjoint,
@@ -1573,17 +1663,20 @@ async function helperCallV54(prompt, web) {
     for (let turn = 0; turn < 4; turn++) {   // web search can pause a long turn; send it back to carry on
       const j = await httpJSON(PROV.anthropic + '/messages', { method: 'POST', signal: helperAbort?.signal, headers: anthHeaders(), body: JSON.stringify(body) });
       text += (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      (j.content || []).filter(b => b.type === 'server_tool_use' && b.input?.query).forEach(b => helperQueries.push(b.input.query));
       if (j.stop_reason !== 'pause_turn') break;
       messages.push({ role: 'assistant', content: j.content }); }
     return text; }
   if (provider === 'openai') {   // Responses API; web search is the built-in web_search tool
     const body = { model, input: prompt, max_output_tokens: 8000 }; if (web) body.tools = [{ type: 'web_search' }];
     const j = await httpJSON(PROV.openai + '/responses', { method: 'POST', signal: helperAbort?.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) });
+    (j.output || []).filter(o => o.type === 'web_search_call').forEach(o => { const q = o.action?.query || o.action?.queries; [].concat(q || []).forEach(x => helperQueries.push(x)); });
     if (typeof j.output_text === 'string' && j.output_text) return j.output_text;
     return (j.output || []).filter(o => o.type === 'message').flatMap(o => o.content || []).filter(c => c.type === 'output_text' || c.text).map(c => c.text || '').join(''); }
   if (provider === 'google') {   // generateContent; web search is Grounding with Google Search
     const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 8000 } }; if (web) body.tools = [{ google_search: {} }];
     const j = await httpJSON(`${PROV.google}/models/${encodeURIComponent(model.replace(/^models\//, ''))}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', signal: helperAbort?.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    (j.candidates?.[0]?.groundingMetadata?.webSearchQueries || []).forEach(x => helperQueries.push(x));
     return (j.candidates?.[0]?.content?.parts || []).filter(p => !p.thought && p.text).map(p => p.text).join(''); }
   // OpenRouter: any model ID with a slash
   const body = { model, messages: [{ role: 'user', content: prompt }], max_tokens: 6000 };
@@ -1670,7 +1763,7 @@ function fullTables(inner, label) { return `<details class="fulltables"><summary
   details.fulltables{margin:8px 0 16px} details.fulltables>summary{cursor:pointer;font-weight:600;padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:#fff;list-style:none}
   details.fulltables>summary::before{content:'▸ '} details.fulltables[open]>summary::before{content:'▾ '} details.fulltables[open]>summary{margin-bottom:12px}`; document.head.appendChild(st); })();
 
-(async () => { await IDB.open(); const s = await IDB.get('state'); if (s) S = { ...DEFAULT(), ...s }; presets = (await IDB.get('presets')) || {}; try { keys = JSON.parse(localStorage.getItem('conjointLabV5.keys') || '{}'); } catch (e) {} if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); initHelperSelect(); initV54(); verifyInit(); guideInit(); launchInit(); })();
+(async () => { await IDB.open(); const s = await IDB.get('state'); if (s) S = { ...DEFAULT(), ...s }; presets = (await IDB.get('presets')) || {}; try { keys = JSON.parse(localStorage.getItem('conjointLabV5.keys') || '{}'); } catch (e) {} if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; S.val.products.forEach(p => { if (p.source) p.source = ''; }); renderPresets(); syncAll(); initHelperSelect(); initV54(); initV54b(); verifyInit(); guideInit(); launchInit(); })();
 
 </script>
 </body></html>

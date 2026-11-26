@@ -164,6 +164,7 @@ guide_code += "\nconst VERIFY_PY = " + json.dumps((root / 'verify' / 'verify.py'
 guide_code += "\nconst VERIFY_R = " + json.dumps((root / 'verify' / 'verify.R').read_text(encoding='utf-8')) + ";\n"
 guide_code += (Path(__file__).parent / 'verify.js').read_text(encoding='utf-8')  # page 9: verification pack
 guide_code += "\n" + (Path(__file__).parent / 'v54_run.js').read_text(encoding='utf-8')  # v5.4: validation panel, cut-off answers, finder progress, keys first
+guide_code += "\n" + (Path(__file__).parent / 'v54_more.js').read_text(encoding='utf-8')  # v5.4: exports per model, prices, alerts, pilot banner
 guide_code += "\n" + (Path(__file__).parent / 'helper.js').read_text(encoding='utf-8')  # v5.4: helper model dropdown
 guide_code += "\n" + (Path(__file__).parent / 'summary.js').read_text(encoding='utf-8')  # v5.4: plain-English results summary
 marker = "(async () => { await IDB.open();"
@@ -213,8 +214,26 @@ s = rep(s, '<div class="log" id="runLog" style="margin-top:12px"></div>\n  </div
 s = rep(s, "['spss', 'SPSS syntax'],", "['validation', 'Validation check (every answer)'], ['spss', 'SPSS syntax'],")
 s = rep(s, "  if (k === 'study') return", "  if (k === 'validation') return valRows();\n  if (k === 'study') return")
 s = rep(s, "throw new ApiError(`No ${m.provider} key (page 4).`, 0, false)", "throw new ApiError(`No ${m.provider} key (enter it on page 1).`, 0, false)")
+# ---------------------------------------------------------------- v5.4 (b): exports per model and for every view; tokens on every call; ranking wording; labels; products
+s = rep(s, "function partRows(k) { const U = units(), F = u => S.fits[u.key];", "function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];")
+s = rep(s, "  if (k === 'validation') return valRows();", "  if (k === 'validation') return valRows();\n  if (k === 'valsummary') return validationSummaryRows();\n  if (k === 'plain') return plainRows();\n  if (k === 'holds') return holdsRows();\n  if (k === 'similarity') return similarityRows();\n  if (k === 'positions') return positionRows();\n  if (k === 'clogit') return clogitRows();")
+s = rep(s, "const PARTS = [['summary', 'Summary (fit and prediction per run)'],", "const PARTS = [['plain', 'Plain-English summary'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['valsummary', 'Validation check: results per model'],")
+s = rep(s, "['validation', 'Validation check (every answer)']", "['validation', 'Validation check: every answer']")
+s = rep(s, "['summary', 'coefs', 'importance', 'predictions'].includes(k) ? 'checked' : ''", "['plain', 'summary', 'coefs', 'importance', 'predictions', 'valsummary'].includes(k) ? 'checked' : ''")
+s = rep(s, "R.ranking[t.id] = { ranking: pr.ranking, valid: pr.valid, warnings: pr.warnings.join('; '), reasoning: pr.reasoning, raw: res.text, served: res.served, cost: res.cost };", "R.ranking[t.id] = { ranking: pr.ranking, valid: pr.valid, warnings: pr.warnings.join('; '), reasoning: pr.reasoning, raw: res.text, served: res.served, cost: res.cost, tin: res.inTok, tout: res.outTok };")
+s = rep(s, "  const { res, pc, raw2, cut, cost } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);\n  let mis = null, detail = '';",
+        "  const { res, pc, raw2, cut, cost, tin, tout } = await storeAsk(u, image ? E.storefrontImagePrompt(S.study.product) : E.storefrontTextPrompt(S.study.product, page, showHeaders()), image ? drawPage(page) : null, { type: 'store', products: page, image }, ctl, names);\n  let mis = null, detail = '';")
+s = rep(s, "misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, at: new Date().toISOString() }; return !!pc.choice; }", "misread_detail: detail, raw: res.text, raw2, cut, served: res.served, cost, tin, tout, at: new Date().toISOString() }; return !!pc.choice; }")
+s = rep(s, "let p = 'Rank the following products from the best to the worst in terms of value for the money.\\n\\n';", "let p = (S.study.legacyRank ? 'Rank the following products from the best to the worst in terms of value for the money.' : 'Rank the following products from the best to the worst.') + '\\n\\n';")
+s = rep(s, "REASONING: Product A has the best value; Product C is last due to lower quality.';", "REASONING: ' + (S.study.legacyRank ? 'Product A has the best value; Product C is last due to lower quality.' : 'Product A is best overall; Product C is last.');")
+s = rep(s, "S.study = { product: st.product, attrs: st.attrs, iterations: 1000, seed: 1, counterbalance: false };", "S.study = { product: st.product, attrs: st.attrs, iterations: 1000, seed: 1, counterbalance: false, legacyRank: true };")
+s = rep(s, "ranks them best to worst for value for money. Repeated N times", "ranks them from best to worst (the Study 2 preset keeps its original \"value for the money\" wording). Repeated N times")
+s = rep(s, "Mean rank (${a.nRank} rankings)</th><th class=\"num\">#1 finishes</th>", "Mean rank in ranking task (${a.nRank} rankings)</th><th class=\"num\">Ranked #1 (of ${a.nRank} rankings)</th>")
+s = rep(s, "Storefront share (${a.nStore})", "Storefront picks (share of ${a.nStore} trials)")
+s = rep(s, "addProducts(pick);", "addProducts(codeNames(pick));")
+s = rep(s, "source: p.source || ''", "source: ''")
 # older saved projects still carry the old default helper; move them to the new one
-s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; renderPresets(); syncAll(); initHelperSelect(); initV54(); verifyInit();")
+s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; S.val.products.forEach(p => { if (p.source) p.source = ''; }); renderPresets(); syncAll(); initHelperSelect(); initV54(); initV54b(); verifyInit();")
 
 out_path.write_text(s, encoding='utf-8')
 print('written', out_path, len(s))
