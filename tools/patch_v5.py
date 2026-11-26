@@ -249,6 +249,7 @@ s = rep(s, '<option value="csv">CSV (one file per part)</option>', '<option valu
 s = rep(s, "const spssText = () => E.spssPerModel(", "const spssText = () => '* For the full start-to-finish SPSS analysis, export as \"CSV: every part in one .zip\" and open spss/analysis.sps.\\n* The per-model syntax below runs on the Conjoint data sheet only.\\n\\n' + E.spssPerModel(")
 s = rep(s, "['ranking', 'Ranking runs']", "['ranking', 'Ranking task answers (Rotman bot, separate from the storefront)']")
 s = rep(s, "  if (k === 'conjoint') {", "  if (k === 'conjoint') return conjointExportRows();\n  if (k === 'conjoint_old') {")
+s = rep(s, "XLSX.write(wb, { bookType: 'xlsx', type: 'array' })", "XLSX.write(wb, { bookType: 'xlsx', type: 'array', compression: true })")  # compressed: ~15x smaller, small enough to email
 # older saved projects still carry the old default helper; move them to the new one
 s = rep(s, "renderPresets(); syncAll(); verifyInit();", "if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; S.val.products.forEach(p => { if (p.source) p.source = ''; }); renderPresets(); syncAll(); initHelperSelect(); initV54(); initV54b(); verifyInit();")
 
