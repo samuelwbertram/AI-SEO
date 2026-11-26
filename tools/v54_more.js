@@ -89,3 +89,26 @@ function productRows(u, a) { const P = S.val.products; if (!a) return [];
     StorefrontPicks: picks ? picks[i] : '', StorefrontTrials: a.nStore ?? '', StorefrontSharePct: a.share ? +(100 * a.share[i]).toFixed(2) : '', StorefrontRank: sRank ? sRank[i] : '',
     RankMatches: sRank && a.predRank ? (sRank[i] === a.predRank[i] ? 1 : 0) : '', RankGap: sRank && a.predRank ? +(sRank[i] - a.predRank[i]).toFixed(1) : '',
     RankingTask_MeanRank: a.avgRank?.[i] ?? '', RankingTask_RankedFirst: a.firstCount?.[i] ?? '', RankingTask_Runs: a.nRank ?? '' })); }
+
+// ---------- "Did the prediction work?": predicted rank vs actual storefront rank over every storefront trial ----------
+function predCheck(a) { if (!a?.pred || !a?.share || !a.nStore) return null; const P = S.val.products, K = P.length;
+  const pr = E.ranks(a.pred, true), sr = E.ranks(a.share, true), picks = a.share.map(s => Math.round(s * a.nStore));
+  const rows = P.map((p, i) => ({ product: p.name, brand: p.display?.['Brand and model'] || '', pred: pr[i], actual: sr[i], picks: picks[i], match: pr[i] === sr[i], near: Math.abs(pr[i] - sr[i]) <= 1 })).sort((x, y) => x.pred - y.pred);
+  const topPred = rows[0], topActual = rows.slice().sort((x, y) => x.actual - y.actual)[0], lastPred = rows[rows.length - 1];
+  const top3p = new Set(rows.filter(r => r.pred <= 3).map(r => r.product)), top3a = rows.filter(r => r.actual <= 3).map(r => r.product);
+  let pear = null; if (a.lockedPred) { const x = a.lockedPred, y = a.share, mx = x.reduce((s, v) => s + v, 0) / K, my = y.reduce((s, v) => s + v, 0) / K; const c = x.reduce((s, v, i) => s + (v - mx) * (y[i] - my), 0), vx = x.reduce((s, v) => s + (v - mx) ** 2, 0), vy = y.reduce((s, v) => s + (v - my) ** 2, 0); pear = vx && vy ? c / Math.sqrt(vx * vy) : null; }
+  return { rows, K, trials: a.nStore, exact: rows.filter(r => r.match).length, near: rows.filter(r => r.near).length, topHit: topPred.picks === Math.max(...rows.map(r => r.picks)), topPred, topActual,
+    top3: top3a.filter(p => top3p.has(p)).length, lastHit: lastPred.picks === Math.min(...rows.map(r => r.picks)), lastPred, rho: a.rhoStore, pear }; }
+function predCheckHTML(a) { const c = predCheck(a); if (!c) return '';
+  const yn = b => b ? '<b class="ok">✓ yes</b>' : '<b class="no">✕ no</b>';
+  return `<div class="sumq">Did the prediction work? Predicted rank vs actual storefront rank (all ${c.trials} storefront trials)</div>
+    <ul class="sumlist"><li>Predicted favourite ${esc(c.topPred.product)} was the most picked: ${yn(c.topHit)}${c.topHit ? '' : ` (most picked: ${esc(c.topActual.product)})`}</li>
+      <li>Predicted top 3 in the actual top 3: <b>${c.top3} of 3</b></li>
+      <li>Exact rank matches: <b>${c.exact} of ${c.K}</b> products · within one place: <b>${c.near} of ${c.K}</b></li>
+      <li>Predicted last (${esc(c.lastPred.product)}) was picked least (ties count): ${yn(c.lastHit)}</li>
+      <li>Rank match over all products (Spearman ρ): <b>${c.rho == null ? '—' : c.rho.toFixed(2)}</b>${c.pear != null ? ` · predicted vs actual share (Pearson r): <b>${c.pear.toFixed(2)}</b>` : ''}</li></ul>
+    <table class="predcheck"><tr><th>Product</th><th class="num">Predicted rank</th><th class="num">Actual rank</th><th class="num">Storefront picks</th><th></th></tr>${c.rows.map(r => `<tr><td>${esc(r.product)}${r.brand ? ' <span class="hint">' + esc(r.brand) + '</span>' : ''}</td><td class="num">${r.pred}</td><td class="num">${r.actual}</td><td class="num">${r.picks} of ${c.trials}</td><td>${r.match ? '✓ exact' : r.near ? '≈ within 1' : ''}</td></tr>`).join('')}</table>
+    <p class="hint">Actual rank = rank by number of storefront picks (ties share the average rank). Products picked by the AI only a handful of times swap places by chance, so the top of the table counts most.</p>`; }
+function predCheckRows() { const out = []; expUnits().forEach(u => { const c = predCheck(S.fits[u.key]); if (!c) return;
+  out.push({ Run: u.label, Row: 'Summary', StorefrontTrials: c.trials, PredictedFavourite: c.topPred.product, MostPicked: c.topActual.product, FavouriteWasMostPicked: c.topHit ? 1 : 0, Top3Overlap: c.top3, ExactRankMatches: c.exact, WithinOneRank: c.near, Products: c.K, PredictedLast: c.lastPred.product, PredictedLastWasLeastPicked: c.lastHit ? 1 : 0, SpearmanRho: c.rho, PearsonShare: c.pear ?? '' });
+  c.rows.forEach(r => out.push({ Run: u.label, Row: 'Product', Product: r.product, BrandAndModel: r.brand, PredictedRank: r.pred, ActualStorefrontRank: r.actual, StorefrontPicks: r.picks, StorefrontTrials: c.trials, ExactMatch: r.match ? 1 : 0, WithinOne: r.near ? 1 : 0 })); }); return out; }

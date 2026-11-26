@@ -908,8 +908,8 @@ function renderCompare(A, title) { if (!A.length) return '<p class="hint">Nothin
   return h; }
 
 // ================= 8 EXPORT & DATA =================
-const PARTS = [['plain', 'Plain-English summary'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['valsummary', 'Validation check: results per model'], ['coefs', 'Coefficients'], ['importance', 'Relative importance'], ['predictions', 'Product predictions vs actual'], ['conjoint', 'Conjoint data (long, SPSS/R-ready)'], ['ranking', 'Ranking runs'], ['store', 'Storefront trials'], ['validation', 'Validation check: every answer'], ['spss', 'SPSS: full analysis, start to finish (syntax + data files)'], ['study', 'Study setup (attributes, products, settings)']];
-function renderExportParts() { $('expParts').innerHTML = PARTS.map(([k, l]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" data-part="${k}" ${['plain', 'summary', 'coefs', 'importance', 'predictions', 'valsummary'].includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join(''); }
+const PARTS = [['plain', 'Plain-English summary'], ['predcheck', 'Did the prediction work (predicted vs actual storefront rank)'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['valsummary', 'Validation check: results per model'], ['coefs', 'Coefficients'], ['importance', 'Relative importance'], ['predictions', 'Product predictions vs actual'], ['conjoint', 'Conjoint data (long, SPSS/R-ready)'], ['ranking', 'Ranking task answers (Rotman bot, separate from the storefront)'], ['store', 'Storefront trials'], ['validation', 'Validation check: every answer'], ['spss', 'SPSS: full analysis, start to finish (syntax + data files)'], ['study', 'Study setup (attributes, products, settings)']];
+function renderExportParts() { $('expParts').innerHTML = PARTS.map(([k, l]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" data-part="${k}" ${['plain', 'predcheck', 'summary', 'coefs', 'importance', 'predictions', 'valsummary'].includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join(''); }
 $('expAll').onclick = () => document.querySelectorAll('[data-part]').forEach(c => c.checked = true);
 function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];
   if (k === 'summary') return U.filter(F).map(u => { const a = F(u); return { Run: u.label, Model: u.m.model, Condition: u.c.label, AnsweredPairs: a.fit?.n ?? '', ChoseFirstPct: a.fit ? +(100 * a.fit.firstShare).toFixed(2) : '', Constant: a.fit?.coefs[0].B ?? '', Constant_p: a.fit?.coefs[0].p ?? '', Nagelkerke: a.fit?.nagelkerke ?? '', Rho_pred_ranking: a.rhoRank ?? '', Rho_pred_storefront: a.rhoStore ?? '', Rho_ranking_storefront: a.rhoRankStore ?? '', PredictedBestPickedPct: a.top1 != null ? +(100 * a.top1).toFixed(2) : '', MisreadTrialsPct: a.misreadRate != null ? +(100 * a.misreadRate).toFixed(2) : '' }; });
@@ -922,6 +922,7 @@ function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];
   if (k === 'validation') return valRows();
   if (k === 'valsummary') return validationSummaryRows();
   if (k === 'plain') return plainRows();
+  if (k === 'predcheck') return predCheckRows();
   if (k === 'holds') return holdsRows();
   if (k === 'similarity') return similarityRows();
   if (k === 'positions') return positionRows();
@@ -1818,6 +1819,29 @@ function productRows(u, a) { const P = S.val.products; if (!a) return [];
     RankMatches: sRank && a.predRank ? (sRank[i] === a.predRank[i] ? 1 : 0) : '', RankGap: sRank && a.predRank ? +(sRank[i] - a.predRank[i]).toFixed(1) : '',
     RankingTask_MeanRank: a.avgRank?.[i] ?? '', RankingTask_RankedFirst: a.firstCount?.[i] ?? '', RankingTask_Runs: a.nRank ?? '' })); }
 
+// ---------- "Did the prediction work?": predicted rank vs actual storefront rank over every storefront trial ----------
+function predCheck(a) { if (!a?.pred || !a?.share || !a.nStore) return null; const P = S.val.products, K = P.length;
+  const pr = E.ranks(a.pred, true), sr = E.ranks(a.share, true), picks = a.share.map(s => Math.round(s * a.nStore));
+  const rows = P.map((p, i) => ({ product: p.name, brand: p.display?.['Brand and model'] || '', pred: pr[i], actual: sr[i], picks: picks[i], match: pr[i] === sr[i], near: Math.abs(pr[i] - sr[i]) <= 1 })).sort((x, y) => x.pred - y.pred);
+  const topPred = rows[0], topActual = rows.slice().sort((x, y) => x.actual - y.actual)[0], lastPred = rows[rows.length - 1];
+  const top3p = new Set(rows.filter(r => r.pred <= 3).map(r => r.product)), top3a = rows.filter(r => r.actual <= 3).map(r => r.product);
+  let pear = null; if (a.lockedPred) { const x = a.lockedPred, y = a.share, mx = x.reduce((s, v) => s + v, 0) / K, my = y.reduce((s, v) => s + v, 0) / K; const c = x.reduce((s, v, i) => s + (v - mx) * (y[i] - my), 0), vx = x.reduce((s, v) => s + (v - mx) ** 2, 0), vy = y.reduce((s, v) => s + (v - my) ** 2, 0); pear = vx && vy ? c / Math.sqrt(vx * vy) : null; }
+  return { rows, K, trials: a.nStore, exact: rows.filter(r => r.match).length, near: rows.filter(r => r.near).length, topHit: topPred.picks === Math.max(...rows.map(r => r.picks)), topPred, topActual,
+    top3: top3a.filter(p => top3p.has(p)).length, lastHit: lastPred.picks === Math.min(...rows.map(r => r.picks)), lastPred, rho: a.rhoStore, pear }; }
+function predCheckHTML(a) { const c = predCheck(a); if (!c) return '';
+  const yn = b => b ? '<b class="ok">✓ yes</b>' : '<b class="no">✕ no</b>';
+  return `<div class="sumq">Did the prediction work? Predicted rank vs actual storefront rank (all ${c.trials} storefront trials)</div>
+    <ul class="sumlist"><li>Predicted favourite ${esc(c.topPred.product)} was the most picked: ${yn(c.topHit)}${c.topHit ? '' : ` (most picked: ${esc(c.topActual.product)})`}</li>
+      <li>Predicted top 3 in the actual top 3: <b>${c.top3} of 3</b></li>
+      <li>Exact rank matches: <b>${c.exact} of ${c.K}</b> products · within one place: <b>${c.near} of ${c.K}</b></li>
+      <li>Predicted last (${esc(c.lastPred.product)}) was picked least (ties count): ${yn(c.lastHit)}</li>
+      <li>Rank match over all products (Spearman ρ): <b>${c.rho == null ? '—' : c.rho.toFixed(2)}</b>${c.pear != null ? ` · predicted vs actual share (Pearson r): <b>${c.pear.toFixed(2)}</b>` : ''}</li></ul>
+    <table class="predcheck"><tr><th>Product</th><th class="num">Predicted rank</th><th class="num">Actual rank</th><th class="num">Storefront picks</th><th></th></tr>${c.rows.map(r => `<tr><td>${esc(r.product)}${r.brand ? ' <span class="hint">' + esc(r.brand) + '</span>' : ''}</td><td class="num">${r.pred}</td><td class="num">${r.actual}</td><td class="num">${r.picks} of ${c.trials}</td><td>${r.match ? '✓ exact' : r.near ? '≈ within 1' : ''}</td></tr>`).join('')}</table>
+    <p class="hint">Actual rank = rank by number of storefront picks (ties share the average rank). Products picked by the AI only a handful of times swap places by chance, so the top of the table counts most.</p>`; }
+function predCheckRows() { const out = []; expUnits().forEach(u => { const c = predCheck(S.fits[u.key]); if (!c) return;
+  out.push({ Run: u.label, Row: 'Summary', StorefrontTrials: c.trials, PredictedFavourite: c.topPred.product, MostPicked: c.topActual.product, FavouriteWasMostPicked: c.topHit ? 1 : 0, Top3Overlap: c.top3, ExactRankMatches: c.exact, WithinOneRank: c.near, Products: c.K, PredictedLast: c.lastPred.product, PredictedLastWasLeastPicked: c.lastHit ? 1 : 0, SpearmanRho: c.rho, PearsonShare: c.pear ?? '' });
+  c.rows.forEach(r => out.push({ Run: u.label, Row: 'Product', Product: r.product, BrandAndModel: r.brand, PredictedRank: r.pred, ActualStorefrontRank: r.actual, StorefrontPicks: r.picks, StorefrontTrials: c.trials, ExactMatch: r.match ? 1 : 0, WithinOne: r.near ? 1 : 0 })); }); return out; }
+
 // ================= v5.4: product-finder helper model, chosen from a dropdown of the providers you have keys for =================
 // Optional, setup only: the helper finds real products and their attributes. It is never used for the conjoint,
 // the storefront or the analysis. Model IDs checked against each provider's docs on 26 Nov 2026.
@@ -1926,8 +1950,9 @@ function modelSummaryHTML(a) {
   const v = verdictOf(a.rhoStore);
   if (v) rows.push(`<div class="sumq">Did its conjoint predict what it bought?</div><p><span class="verdict ${v.cls}">${v.word}.</span> The ranking predicted from its conjoint matched its storefront picks at ρ = ${a.rhoStore.toFixed(2)}.${a.top1 != null ? ` Its predicted favourite, ${esc(productLabel(a.bestName))}, was picked in ${(100 * a.top1).toFixed(0)}% of ${a.nStore} storefront trials (chance = ${(100 / P.length).toFixed(0)}%).` : ''}</p>`);
   else if (a.fit) rows.push(`<div class="sumq">Did its conjoint predict what it bought?</div><p class="hint">No storefront trials yet for this model.</p>`);
+  if (typeof predCheckHTML === 'function') rows.push(predCheckHTML(a));
   const vr = verdictOf(a.rhoRank);
-  if (vr) rows.push(`<p class="hint">Ranking task: the predicted order matched its own rankings at ρ = ${a.rhoRank.toFixed(2)} (${vr.word.toLowerCase()}).</p>`);
+  if (vr) rows.push(`<p class="hint">Separate ranking task (the AI ranks all products at once, "Rotman bot"): the predicted order matched those rankings at ρ = ${a.rhoRank.toFixed(2)} (${vr.word.toLowerCase()}).</p>`);
   const notes = [];
   if (a.nRows != null && a.nValid != null && a.nRows > a.nValid) notes.push(`${a.nRows - a.nValid} unclear conjoint answers were left out`);
   if (a.misreadRate) notes.push(`${(100 * a.misreadRate).toFixed(0)}% of storefront trials had a misread card`);
@@ -1956,9 +1981,10 @@ function summaryHTML(A, title) { if (!A.length) return '';
     ${acrossHTML(A)}<div class="sumgrid">${A.map(modelSummaryHTML).join('')}</div></div>`; }
 function fullTables(inner, label) { return `<details class="fulltables"><summary>${esc(label || 'Show full tables (coefficients, importance, predictions)')}</summary>${inner}</details>`; }
 (() => { const st = document.createElement('style'); st.textContent = `
-  .summary h3{margin:0 0 6px} .sumgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:12px}
+  .summary h3{margin:0 0 6px} .sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin-top:12px}
   .sumcard{border:1px solid var(--line,#ddd);border-radius:10px;padding:12px 14px;background:var(--bg2,#fafaf7)} .sumcard.wide{margin-top:8px}
   .sumq{font-weight:600;margin:10px 0 4px} .sumlist{margin:0 0 4px 18px;padding:0} .sumlist li{margin:2px 0}
+  .predcheck{margin-top:6px;width:100%} .predcheck td:last-child{white-space:nowrap} b.ok{color:#1d5b3c} b.no{color:#8a2a20}
   .verdict{display:inline-block;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:6px}
   .verdict.ok{background:#d9efe3;color:#1d5b3c} .verdict.mid{background:#fbefcf;color:#7a5a00} .verdict.no{background:#f6d9d6;color:#8a2a20}
   details.fulltables{margin:8px 0 16px} details.fulltables>summary{cursor:pointer;font-weight:600;padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:#fff;list-style:none}

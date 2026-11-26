@@ -37,8 +37,9 @@ function modelSummaryHTML(a) {
   const v = verdictOf(a.rhoStore);
   if (v) rows.push(`<div class="sumq">Did its conjoint predict what it bought?</div><p><span class="verdict ${v.cls}">${v.word}.</span> The ranking predicted from its conjoint matched its storefront picks at ρ = ${a.rhoStore.toFixed(2)}.${a.top1 != null ? ` Its predicted favourite, ${esc(productLabel(a.bestName))}, was picked in ${(100 * a.top1).toFixed(0)}% of ${a.nStore} storefront trials (chance = ${(100 / P.length).toFixed(0)}%).` : ''}</p>`);
   else if (a.fit) rows.push(`<div class="sumq">Did its conjoint predict what it bought?</div><p class="hint">No storefront trials yet for this model.</p>`);
+  if (typeof predCheckHTML === 'function') rows.push(predCheckHTML(a));
   const vr = verdictOf(a.rhoRank);
-  if (vr) rows.push(`<p class="hint">Ranking task: the predicted order matched its own rankings at ρ = ${a.rhoRank.toFixed(2)} (${vr.word.toLowerCase()}).</p>`);
+  if (vr) rows.push(`<p class="hint">Separate ranking task (the AI ranks all products at once, "Rotman bot"): the predicted order matched those rankings at ρ = ${a.rhoRank.toFixed(2)} (${vr.word.toLowerCase()}).</p>`);
   const notes = [];
   if (a.nRows != null && a.nValid != null && a.nRows > a.nValid) notes.push(`${a.nRows - a.nValid} unclear conjoint answers were left out`);
   if (a.misreadRate) notes.push(`${(100 * a.misreadRate).toFixed(0)}% of storefront trials had a misread card`);
@@ -67,9 +68,10 @@ function summaryHTML(A, title) { if (!A.length) return '';
     ${acrossHTML(A)}<div class="sumgrid">${A.map(modelSummaryHTML).join('')}</div></div>`; }
 function fullTables(inner, label) { return `<details class="fulltables"><summary>${esc(label || 'Show full tables (coefficients, importance, predictions)')}</summary>${inner}</details>`; }
 (() => { const st = document.createElement('style'); st.textContent = `
-  .summary h3{margin:0 0 6px} .sumgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:12px}
+  .summary h3{margin:0 0 6px} .sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin-top:12px}
   .sumcard{border:1px solid var(--line,#ddd);border-radius:10px;padding:12px 14px;background:var(--bg2,#fafaf7)} .sumcard.wide{margin-top:8px}
   .sumq{font-weight:600;margin:10px 0 4px} .sumlist{margin:0 0 4px 18px;padding:0} .sumlist li{margin:2px 0}
+  .predcheck{margin-top:6px;width:100%} .predcheck td:last-child{white-space:nowrap} b.ok{color:#1d5b3c} b.no{color:#8a2a20}
   .verdict{display:inline-block;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:6px}
   .verdict.ok{background:#d9efe3;color:#1d5b3c} .verdict.mid{background:#fbefcf;color:#7a5a00} .verdict.no{background:#f6d9d6;color:#8a2a20}
   details.fulltables{margin:8px 0 16px} details.fulltables>summary{cursor:pointer;font-weight:600;padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:#fff;list-style:none}
