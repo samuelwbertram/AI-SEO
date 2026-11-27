@@ -122,5 +122,5 @@ function conjointExportRows() { const f = E.features(S.study.attrs), out = [], b
       const o = { Run: u.label, Model: u.m.model, Condition: u.c.label, Question: +id || id, Pair: x.pair, Order: x.order || 'AB', ChoseFirst: x.answer === 'first' ? 1 : x.answer === 'second' ? 0 : '', Answered: x.answer ? 'yes' : 'unclear (left out of the analysis)' };
       S.study.attrs.forEach(at => { o[E.safe(at.name) + '_Product1'] = A[at.name]?.display; o[E.safe(at.name) + '_Product2'] = B[at.name]?.display; });
       f.forEach((ft, j) => o[ft.name] = +(a[j] - b[j]).toFixed(6));
-      Object.assign(o, { Reason: x.reason ?? '', Answer: x.raw ?? '', ReAskAnswer: x.raw2 ?? '', Prompt: E.legacyConjointPrompt(S.study.product, S.study.attrs, A, B), ServedModel: x.served ?? '', At: x.at ?? '' }); out.push(o); }); });
+      Object.assign(o, { Reason: x.reason ?? '', Answer: x.raw ?? '', ReAskAnswer: x.raw2 ?? '', Prompt: (typeof briefPrefixText === 'function' ? briefPrefixText(u) : '') + E.legacyConjointPrompt(S.study.product, S.study.attrs, A, B), ServedModel: x.served ?? '', At: x.at ?? '' }); out.push(o); }); });
   return out; }
