@@ -5,7 +5,11 @@
 function spssPack() { if (!Object.keys(S.fits || {}).length) $('analyseAll').click();
   const keep = new Set(expUnits().map(u => runId(u))), v = vRows(), feats = v.feats, P = S.val.products, U = expUnits().filter(u => u.m.provider !== 'import' || conjointRows(u).length);
   const by = rows => rows.filter(r => keep.has(r.RunID));
-  const conj = by(v.conj), long = by(v.long), trials = by(v.trials).map(({ PageOrder, ...r }) => r);
+  const conj = by(v.conj), trials = by(v.trials).map(({ PageOrder, ...r }) => r);
+  // v5.5: AfterLock = 1 for storefront trials run after that model's prediction was locked (used by STEP 7b)
+  const lockAt = Object.fromEntries(U.map(u => [runId(u), resOf(u).lock?.at || ''])), after = new Set(trials.filter(t => lockAt[t.RunID] && (!t.At || t.At > lockAt[t.RunID])).map(t => t.RunID + '|' + t.Trial));
+  const long = by(v.long).map(r => ({ ...r, AfterLock: after.has(r.RunID + '|' + r.Trial) ? 1 : 0 }));
+  const posctl = U.flatMap(u => { const c = S.fits[u.key]?.posctl; return c && !c.error ? c.full.terms.map(t => ({ RunID: runId(u), Term: t.term, B: t.B, SE: t.SE, HitRatePct: 100 * c.hitFull, TrialsAfterLock: c.n })) : []; });
   const prodRun = U.flatMap(u => v.prods.map(p => ({ RunID: runId(u), ...Object.fromEntries(Object.entries(p).filter(([k]) => k === 'Product' || k.startsWith('x_'))) })));
   const rank = U.flatMap(u => Object.entries(S.results[u.key]?.ranking || {}).filter(([, r]) => r.valid && r.ranking).flatMap(([id, r]) => r.ranking.map((pname, i) => ({ RunID: runId(u), RankingRun: +id, Product: pname, RankPos: i + 1 }))));
   const val = U.flatMap(u => { const R = resOf(u); return [...(R.validationHistory || []), R.validation].filter(Boolean).flatMap(V => Object.entries(V.trials || {}).map(([t, x]) => ({ RunID: runId(u), CheckedAt: V.at || '', Trial: +t, BestProduct: V.dominant, Picked: x.choice ?? '', Correct: x.choice === V.dominant ? 1 : 0, CutOff: x.cut ? 1 : 0 }))); });
@@ -13,7 +17,7 @@ function spssPack() { if (!Object.keys(S.fits || {}).length) $('analyseAll').cli
   const pred = U.flatMap(u => productRows(u, S.fits[u.key]).map(r => ({ RunID: runId(u), ...r })));
   const files = [['spss/analysis.sps', spssFull(feats, U)], ['spss/data/conjoint_long.csv', fullCSV(conj)], ['spss/data/products_by_run.csv', fullCSV(prodRun)],
     ['spss/data/storefront_long.csv', fullCSV(long)], ['spss/data/storefront_trials.csv', fullCSV(trials)], ['spss/data/ranking_long.csv', fullCSV(rank)], ['spss/data/validation.csv', fullCSV(val)],
-    ['spss/expected/coefficients.csv', fullCSV(by(v.coefs))], ['spss/expected/importance.csv', fullCSV(imp)], ['spss/expected/product_predictions.csv', fullCSV(pred)], ['spss/expected/storefront_clogit.csv', fullCSV(by(v.clog))],
+    ['spss/expected/coefficients.csv', fullCSV(by(v.coefs))], ['spss/expected/importance.csv', fullCSV(imp)], ['spss/expected/product_predictions.csv', fullCSV(pred)], ['spss/expected/storefront_clogit.csv', fullCSV(by(v.clog))], ['spss/expected/storefront_position_controlled.csv', fullCSV(posctl)],
     ['spss/READ_ME.txt', `SPSS analysis for "${S.projName}" (${U.map(u => u.label).join(', ')}). Generated ${new Date().toISOString()} by LLM Conjoint Lab.\n\n1. Unzip this file.\n2. Open spss/analysis.sps in SPSS.\n3. On the CD line near the top, put the full path of the spss folder.\n4. Run All.\n\nThe syntax runs every step from the raw data: conjoint (Study 2 method), relative importance, predicted product utilities and shares, storefront picks and ranks, whether the conjoint predicts the storefront, position bias, the position model, the ranking task and the validation check.\nAfter each step it says which file in spss/expected/ holds the tool's own numbers to compare with.\nThe CSV files outside the spss folder are the same tables as the Export page, for Excel.\n`]];
   return files; }
 
@@ -101,7 +105,7 @@ LIST VARIABLES=RunID Product Utility PredShare PredRank.
 
 * ---------------- STEP 4. Storefront: picks per product over every trial, share, rank, and match with the prediction ----------------.
 GET DATA /TYPE=TXT /FILE='data/storefront_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
-  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0.
+  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0 AfterLock F4.0.
 DATASET NAME sf.
 SORT CASES BY RunID Product.
 AGGREGATE /OUTFILE=* /BREAK=RunID Product /Picks = SUM(Chosen) /Trials = N.
@@ -148,7 +152,7 @@ SPLIT FILE OFF.
 * Fitted as a stratified Cox model, one stratum per trial (with one chosen product per trial this is the conditional logit).
 * Products never chosen by a run are dropped (as in ACES).
 GET DATA /TYPE=TXT /FILE='data/storefront_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
-  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0.
+  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0 AfterLock F4.0.
 SORT CASES BY RunID Product.
 AGGREGATE /OUTFILE=* MODE=ADDVARIABLES /BREAK=RunID Product /EverChosen = MAX(Chosen).
 SELECT IF EverChosen = 1.
@@ -162,6 +166,27 @@ COXREG VARIABLES=CoxTime WITH Product PageRow PageCol
   /METHOD=ENTER Product PageRow PageCol.
 SPLIT FILE OFF.
 * Reference: Product = first in alphabetical order, PageRow = bottom row, PageCol = last column. Compare B and SE with expected/storefront_clogit.csv.
+
+* ---------------- STEP 7b. Position-controlled test: locked conjoint utility + page row + page column (trials after the lock) ----------------.
+GET DATA /TYPE=TXT /FILE='data/storefront_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
+  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0 AfterLock F4.0.
+SELECT IF AfterLock = 1.
+SORT CASES BY RunID Product.
+MATCH FILES /FILE=* /TABLE='predicted.sav' /BY RunID Product.
+COMPUTE CoxTime = 2 - Chosen.
+SORT CASES BY RunID.
+SPLIT FILE SEPARATE BY RunID.
+* Conjoint only.
+COXREG VARIABLES=CoxTime WITH Utility /STATUS=Chosen(1) /STRATA=Trial /METHOD=ENTER Utility.
+* Conjoint + page position.
+COXREG VARIABLES=CoxTime WITH Utility PageRow PageCol
+  /STATUS=Chosen(1) /STRATA=Trial
+  /CATEGORICAL=PageRow PageCol
+  /CONTRAST (PageRow)=Indicator /CONTRAST (PageCol)=Indicator
+  /METHOD=ENTER Utility PageRow PageCol.
+SPLIT FILE OFF.
+* Utility = each product's conjoint utility (Step 3). A positive, significant B for Utility = the conjoint still predicts choice with page position held constant.
+* Reference: bottom row, last column. Compare B and SE with expected/storefront_position_controlled.csv.
 
 * ---------------- STEP 8. Ranking task (Rotman bot): mean rank and times ranked #1, against the prediction ----------------.
 GET DATA /TYPE=TXT /FILE='data/ranking_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=

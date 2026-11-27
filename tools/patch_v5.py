@@ -22,7 +22,7 @@ s = s.replace('LLM Conjoint Lab v3 app', 'LLM Conjoint Lab v5 app')
 from datetime import datetime
 from zoneinfo import ZoneInfo
 BUILD = datetime.now(ZoneInfo('Australia/Melbourne')).strftime('%d %b %Y %H:%M')   # shown in the header, so you can tell you have the newest version
-s = rep(s, '<span class="sub">v3 · build a study', f'<span class="sub">v5.4 (updated {BUILD} Melbourne time) · build a study')
+s = rep(s, '<span class="sub">v3 · build a study', f'<span class="sub">v5.5 (updated {BUILD} Melbourne time) · build a study')
 s = re.sub(r'<title>[^<]*</title>', '<title>LLM Conjoint Lab v5</title>', s, count=1)
 
 # ---------------------------------------------------------------- engine: linked attributes in the conjoint wording
@@ -171,6 +171,7 @@ guide_code += "\n" + (Path(__file__).parent / 'v54_run.js').read_text(encoding='
 guide_code += "\n" + (Path(__file__).parent / 'v54_more.js').read_text(encoding='utf-8')  # v5.4: exports per model, prices, alerts, pilot banner
 guide_code += "\n" + (Path(__file__).parent / 'helper.js').read_text(encoding='utf-8')  # v5.4: helper model dropdown
 guide_code += "\n" + (Path(__file__).parent / 'summary.js').read_text(encoding='utf-8')  # v5.4: plain-English results summary
+guide_code += "\n" + (Path(__file__).parent / 'poscontrol.js').read_text(encoding='utf-8')  # v5.5: position-controlled storefront test
 marker = "(async () => { await IDB.open();"
 s = rep(s, marker, new_code + "\n" + guide_code + "\n" + marker)
 s = rep(s, "renderPresets(); syncAll(); })();", "renderPresets(); syncAll(); verifyInit(); guideInit(); launchInit(); })();")
@@ -220,8 +221,8 @@ s = rep(s, "  if (k === 'study') return", "  if (k === 'validation') return valR
 s = rep(s, "throw new ApiError(`No ${m.provider} key (page 4).`, 0, false)", "throw new ApiError(`No ${m.provider} key (enter it on page 1).`, 0, false)")
 # ---------------------------------------------------------------- v5.4 (b): exports per model and for every view; tokens on every call; ranking wording; labels; products
 s = rep(s, "function partRows(k) { const U = units(), F = u => S.fits[u.key];", "function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];")
-s = rep(s, "  if (k === 'validation') return valRows();", "  if (k === 'validation') return valRows();\n  if (k === 'valsummary') return validationSummaryRows();\n  if (k === 'plain') return plainRows();\n  if (k === 'predcheck') return predCheckRows();\n  if (k === 'holds') return holdsRows();\n  if (k === 'similarity') return similarityRows();\n  if (k === 'positions') return positionRows();\n  if (k === 'clogit') return clogitRows();")
-s = rep(s, "const PARTS = [['summary', 'Summary (fit and prediction per run)'],", "const PARTS = [['plain', 'Plain-English summary'], ['predcheck', 'Did the prediction work (predicted vs actual storefront rank)'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['valsummary', 'Validation check: results per model'],")
+s = rep(s, "  if (k === 'validation') return valRows();", "  if (k === 'validation') return valRows();\n  if (k === 'valsummary') return validationSummaryRows();\n  if (k === 'plain') return plainRows();\n  if (k === 'predcheck') return predCheckRows();\n  if (k === 'holds') return holdsRows();\n  if (k === 'similarity') return similarityRows();\n  if (k === 'positions') return positionRows();\n  if (k === 'clogit') return clogitRows();\n  if (k === 'posctl') return posControlRows();")
+s = rep(s, "const PARTS = [['summary', 'Summary (fit and prediction per run)'],", "const PARTS = [['plain', 'Plain-English summary'], ['predcheck', 'Did the prediction work (predicted vs actual storefront rank)'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['posctl', 'Position-controlled test (prediction + page position)'], ['valsummary', 'Validation check: results per model'],")
 s = rep(s, "['validation', 'Validation check (every answer)']", "['validation', 'Validation check: every answer']")
 s = rep(s, "['summary', 'coefs', 'importance', 'predictions'].includes(k) ? 'checked' : ''", "['plain', 'predcheck', 'summary', 'coefs', 'importance', 'predictions', 'valsummary'].includes(k) ? 'checked' : ''")
 s = rep(s, "R.ranking[t.id] = { ranking: pr.ranking, valid: pr.valid, warnings: pr.warnings.join('; '), reasoning: pr.reasoning, raw: res.text, served: res.served, cost: res.cost };", "R.ranking[t.id] = { ranking: pr.ranking, valid: pr.valid, warnings: pr.warnings.join('; '), reasoning: pr.reasoning, raw: res.text, served: res.served, cost: res.cost, tin: res.inTok, tout: res.outTok };")

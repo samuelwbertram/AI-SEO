@@ -58,7 +58,7 @@ canvas.store{max-width:100%;border:1px solid var(--line);border-radius:6px}
 #tip{display:none;position:absolute;z-index:99;max-width:360px;background:#1d1d1f;color:#f2f2f2;padding:10px 12px;border-radius:8px;font-size:12.5px;line-height:1.45;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .navrow{display:flex;justify-content:space-between;margin:6px 0 30px}
 td input{padding:4px 6px}</style></head><body>
-<header><h1>LLM Conjoint Lab</h1><span class="sub">v5.4 (updated 26 Nov 2026 15:12 Melbourne time) · build a study, run it on many AI models at once, check whether each model's conjoint predicts what it actually does</span></header>
+<header><h1>LLM Conjoint Lab</h1><span class="sub">v5.5 (updated 27 Nov 2026 15:44 Melbourne time) · build a study, run it on many AI models at once, check whether each model's conjoint predicts what it actually does</span></header>
 <nav id="tabs">
   <button data-t="study" class="on"><span class="n">1</span>Study</button>
   <button data-t="products"><span class="n">2</span>Products</button>
@@ -908,7 +908,7 @@ function renderCompare(A, title) { if (!A.length) return '<p class="hint">Nothin
   return h; }
 
 // ================= 8 EXPORT & DATA =================
-const PARTS = [['plain', 'Plain-English summary'], ['predcheck', 'Did the prediction work (predicted vs actual storefront rank)'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['valsummary', 'Validation check: results per model'], ['coefs', 'Coefficients'], ['importance', 'Relative importance'], ['predictions', 'Product predictions vs actual'], ['conjoint', 'Conjoint data (long, SPSS/R-ready)'], ['ranking', 'Ranking task answers (Rotman bot, separate from the storefront)'], ['store', 'Storefront trials'], ['validation', 'Validation check: every answer'], ['spss', 'SPSS: full analysis, start to finish (syntax + data files)'], ['study', 'Study setup (attributes, products, settings)']];
+const PARTS = [['plain', 'Plain-English summary'], ['predcheck', 'Did the prediction work (predicted vs actual storefront rank)'], ['summary', 'Model comparison (fit and prediction per run)'], ['holds', 'Coefficients side by side with Holds in'], ['similarity', 'Do models share preferences (rho matrix)'], ['positions', 'Storefront picks by page position'], ['clogit', 'Storefront position model (conditional logit)'], ['posctl', 'Position-controlled test (prediction + page position)'], ['valsummary', 'Validation check: results per model'], ['coefs', 'Coefficients'], ['importance', 'Relative importance'], ['predictions', 'Product predictions vs actual'], ['conjoint', 'Conjoint data (long, SPSS/R-ready)'], ['ranking', 'Ranking task answers (Rotman bot, separate from the storefront)'], ['store', 'Storefront trials'], ['validation', 'Validation check: every answer'], ['spss', 'SPSS: full analysis, start to finish (syntax + data files)'], ['study', 'Study setup (attributes, products, settings)']];
 function renderExportParts() { $('expParts').innerHTML = PARTS.map(([k, l]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500"><input type="checkbox" data-part="${k}" ${['plain', 'predcheck', 'summary', 'coefs', 'importance', 'predictions', 'valsummary'].includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join(''); }
 $('expAll').onclick = () => document.querySelectorAll('[data-part]').forEach(c => c.checked = true);
 function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];
@@ -928,6 +928,7 @@ function partRows(k) { const U = expUnits(), F = u => S.fits[u.key];
   if (k === 'similarity') return similarityRows();
   if (k === 'positions') return positionRows();
   if (k === 'clogit') return clogitRows();
+  if (k === 'posctl') return posControlRows();
   if (k === 'study') return [...S.study.attrs.map(a => ({ Section: 'Attribute', Name: a.name, Detail: a.kind === 'range' ? `${a.min}–${a.max}` : a.levels.join(' | '), Type: a.type + (a.isPrice ? ', price' : '') })), ...S.val.products.map(p => ({ Section: 'Product', Name: p.name, Detail: showHeaders().slice(1).map(h => `${h}: ${p.display[h] ?? ''}`).join('; '), Type: p.source || '' })), { Section: 'Settings', Name: 'Pairs / seed / counterbalance', Detail: `${S.study.iterations} / ${S.study.seed} / ${S.study.counterbalance}`, Type: '' }, ...S.conditions.map(c => ({ Section: 'Condition', Name: c.label, Detail: 'temperature ' + (c.temperature || S.settings.temperature || 'model default'), Type: '' }))];
   return []; }
 const spssText = () => '* For the full start-to-finish SPSS analysis, export as "CSV: every part in one .zip" and open spss/analysis.sps.\n* The per-model syntax below runs on the Conjoint data sheet only.\n\n' + E.spssPerModel(S.study.attrs).replace(/ChoseFirst/g, 'ChoseFirst') + '\n\n' + E.spssPooled(units().map(u => u.label), S.study.attrs).replace(/Model = "/g, 'Run = "');
@@ -1462,7 +1463,11 @@ function verifyInit() {
 function spssPack() { if (!Object.keys(S.fits || {}).length) $('analyseAll').click();
   const keep = new Set(expUnits().map(u => runId(u))), v = vRows(), feats = v.feats, P = S.val.products, U = expUnits().filter(u => u.m.provider !== 'import' || conjointRows(u).length);
   const by = rows => rows.filter(r => keep.has(r.RunID));
-  const conj = by(v.conj), long = by(v.long), trials = by(v.trials).map(({ PageOrder, ...r }) => r);
+  const conj = by(v.conj), trials = by(v.trials).map(({ PageOrder, ...r }) => r);
+  // v5.5: AfterLock = 1 for storefront trials run after that model's prediction was locked (used by STEP 7b)
+  const lockAt = Object.fromEntries(U.map(u => [runId(u), resOf(u).lock?.at || ''])), after = new Set(trials.filter(t => lockAt[t.RunID] && (!t.At || t.At > lockAt[t.RunID])).map(t => t.RunID + '|' + t.Trial));
+  const long = by(v.long).map(r => ({ ...r, AfterLock: after.has(r.RunID + '|' + r.Trial) ? 1 : 0 }));
+  const posctl = U.flatMap(u => { const c = S.fits[u.key]?.posctl; return c && !c.error ? c.full.terms.map(t => ({ RunID: runId(u), Term: t.term, B: t.B, SE: t.SE, HitRatePct: 100 * c.hitFull, TrialsAfterLock: c.n })) : []; });
   const prodRun = U.flatMap(u => v.prods.map(p => ({ RunID: runId(u), ...Object.fromEntries(Object.entries(p).filter(([k]) => k === 'Product' || k.startsWith('x_'))) })));
   const rank = U.flatMap(u => Object.entries(S.results[u.key]?.ranking || {}).filter(([, r]) => r.valid && r.ranking).flatMap(([id, r]) => r.ranking.map((pname, i) => ({ RunID: runId(u), RankingRun: +id, Product: pname, RankPos: i + 1 }))));
   const val = U.flatMap(u => { const R = resOf(u); return [...(R.validationHistory || []), R.validation].filter(Boolean).flatMap(V => Object.entries(V.trials || {}).map(([t, x]) => ({ RunID: runId(u), CheckedAt: V.at || '', Trial: +t, BestProduct: V.dominant, Picked: x.choice ?? '', Correct: x.choice === V.dominant ? 1 : 0, CutOff: x.cut ? 1 : 0 }))); });
@@ -1470,7 +1475,7 @@ function spssPack() { if (!Object.keys(S.fits || {}).length) $('analyseAll').cli
   const pred = U.flatMap(u => productRows(u, S.fits[u.key]).map(r => ({ RunID: runId(u), ...r })));
   const files = [['spss/analysis.sps', spssFull(feats, U)], ['spss/data/conjoint_long.csv', fullCSV(conj)], ['spss/data/products_by_run.csv', fullCSV(prodRun)],
     ['spss/data/storefront_long.csv', fullCSV(long)], ['spss/data/storefront_trials.csv', fullCSV(trials)], ['spss/data/ranking_long.csv', fullCSV(rank)], ['spss/data/validation.csv', fullCSV(val)],
-    ['spss/expected/coefficients.csv', fullCSV(by(v.coefs))], ['spss/expected/importance.csv', fullCSV(imp)], ['spss/expected/product_predictions.csv', fullCSV(pred)], ['spss/expected/storefront_clogit.csv', fullCSV(by(v.clog))],
+    ['spss/expected/coefficients.csv', fullCSV(by(v.coefs))], ['spss/expected/importance.csv', fullCSV(imp)], ['spss/expected/product_predictions.csv', fullCSV(pred)], ['spss/expected/storefront_clogit.csv', fullCSV(by(v.clog))], ['spss/expected/storefront_position_controlled.csv', fullCSV(posctl)],
     ['spss/READ_ME.txt', `SPSS analysis for "${S.projName}" (${U.map(u => u.label).join(', ')}). Generated ${new Date().toISOString()} by LLM Conjoint Lab.\n\n1. Unzip this file.\n2. Open spss/analysis.sps in SPSS.\n3. On the CD line near the top, put the full path of the spss folder.\n4. Run All.\n\nThe syntax runs every step from the raw data: conjoint (Study 2 method), relative importance, predicted product utilities and shares, storefront picks and ranks, whether the conjoint predicts the storefront, position bias, the position model, the ranking task and the validation check.\nAfter each step it says which file in spss/expected/ holds the tool's own numbers to compare with.\nThe CSV files outside the spss folder are the same tables as the Export page, for Excel.\n`]];
   return files; }
 
@@ -1558,7 +1563,7 @@ LIST VARIABLES=RunID Product Utility PredShare PredRank.
 
 * ---------------- STEP 4. Storefront: picks per product over every trial, share, rank, and match with the prediction ----------------.
 GET DATA /TYPE=TXT /FILE='data/storefront_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
-  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0.
+  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0 AfterLock F4.0.
 DATASET NAME sf.
 SORT CASES BY RunID Product.
 AGGREGATE /OUTFILE=* /BREAK=RunID Product /Picks = SUM(Chosen) /Trials = N.
@@ -1605,7 +1610,7 @@ SPLIT FILE OFF.
 * Fitted as a stratified Cox model, one stratum per trial (with one chosen product per trial this is the conditional logit).
 * Products never chosen by a run are dropped (as in ACES).
 GET DATA /TYPE=TXT /FILE='data/storefront_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
-  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0.
+  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0 AfterLock F4.0.
 SORT CASES BY RunID Product.
 AGGREGATE /OUTFILE=* MODE=ADDVARIABLES /BREAK=RunID Product /EverChosen = MAX(Chosen).
 SELECT IF EverChosen = 1.
@@ -1619,6 +1624,27 @@ COXREG VARIABLES=CoxTime WITH Product PageRow PageCol
   /METHOD=ENTER Product PageRow PageCol.
 SPLIT FILE OFF.
 * Reference: Product = first in alphabetical order, PageRow = bottom row, PageCol = last column. Compare B and SE with expected/storefront_clogit.csv.
+
+* ---------------- STEP 7b. Position-controlled test: locked conjoint utility + page row + page column (trials after the lock) ----------------.
+GET DATA /TYPE=TXT /FILE='data/storefront_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
+  RunID A100 Trial F8.0 Product A100 Position F4.0 PageRow F4.0 PageCol F4.0 Chosen F8.0 AfterLock F4.0.
+SELECT IF AfterLock = 1.
+SORT CASES BY RunID Product.
+MATCH FILES /FILE=* /TABLE='predicted.sav' /BY RunID Product.
+COMPUTE CoxTime = 2 - Chosen.
+SORT CASES BY RunID.
+SPLIT FILE SEPARATE BY RunID.
+* Conjoint only.
+COXREG VARIABLES=CoxTime WITH Utility /STATUS=Chosen(1) /STRATA=Trial /METHOD=ENTER Utility.
+* Conjoint + page position.
+COXREG VARIABLES=CoxTime WITH Utility PageRow PageCol
+  /STATUS=Chosen(1) /STRATA=Trial
+  /CATEGORICAL=PageRow PageCol
+  /CONTRAST (PageRow)=Indicator /CONTRAST (PageCol)=Indicator
+  /METHOD=ENTER Utility PageRow PageCol.
+SPLIT FILE OFF.
+* Utility = each product's conjoint utility (Step 3). A positive, significant B for Utility = the conjoint still predicts choice with page position held constant.
+* Reference: bottom row, last column. Compare B and SE with expected/storefront_position_controlled.csv.
 
 * ---------------- STEP 8. Ranking task (Rotman bot): mean rank and times ranked #1, against the prediction ----------------.
 GET DATA /TYPE=TXT /FILE='data/ranking_long.csv' /ENCODING='UTF8' /DELIMITERS="," /QUALIFIER='"' /ARRANGEMENT=DELIMITED /FIRSTCASE=2 /VARIABLES=
@@ -2002,6 +2028,79 @@ function fullTables(inner, label) { return `<details class="fulltables"><summary
   .verdict.ok{background:#d9efe3;color:#1d5b3c} .verdict.mid{background:#fbefcf;color:#7a5a00} .verdict.no{background:#f6d9d6;color:#8a2a20}
   details.fulltables{margin:8px 0 16px} details.fulltables>summary{cursor:pointer;font-weight:600;padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:#fff;list-style:none}
   details.fulltables>summary::before{content:'▸ '} details.fulltables[open]>summary::before{content:'▾ '} details.fulltables[open]>summary{margin-bottom:12px}`; document.head.appendChild(st); })();
+
+// ================= v5.5: position-controlled storefront test =================
+// Does the locked conjoint prediction still predict storefront choice once page position is held constant?
+// One conditional logit: locked utility + top-row and column indicators, on the trials run AFTER the lock.
+// Two robustness checks: position-balanced choice shares, and trials where the predicted favourite was not top-left.
+// Fixed rules only, no AI. Same input gives the same output.
+
+function clogitFit(D, vars) { // D: [{ chosen: index, x: [[...], ...] }] — one row of x per product on the page
+  const k = vars.length; let b = new Array(k).fill(0), H;
+  const eval_ = bb => { const g = new Array(k).fill(0), h = Array.from({ length: k }, () => new Array(k).fill(0)); let L = 0;
+    D.forEach(s => { const eta = s.x.map(r => r.reduce((t, v, j) => t + v * bb[j], 0)), mx = Math.max(...eta), ex = eta.map(e => Math.exp(e - mx)), Z = ex.reduce((a, c) => a + c, 0), pr = ex.map(e => e / Z);
+      L += Math.log(pr[s.chosen]); const xb = new Array(k).fill(0); s.x.forEach((r, i) => r.forEach((v, j) => xb[j] += pr[i] * v));
+      s.x[s.chosen].forEach((v, j) => g[j] += v - xb[j]); s.x.forEach((r, i) => { for (let j = 0; j < k; j++) for (let l = 0; l < k; l++) h[j][l] += pr[i] * (r[j] - xb[j]) * (r[l] - xb[l]); }); });
+    return { g, h, L }; };
+  let cur = eval_(b);
+  for (let it = 0; it < 200; it++) { const Hi = invMat(cur.h); if (!Hi) return { error: 'The position-controlled model could not be estimated (a term is perfectly predictive).' };
+    const dir = Hi.map(r => r.reduce((t, hv, l) => t + hv * cur.g[l], 0)); let lam = 1, nb, nx;
+    for (let s = 0; s < 40; s++) { nb = b.map((v, j) => v + lam * dir[j]); nx = eval_(nb); if (Number.isFinite(nx.L) && nx.L >= cur.L - 1e-12) break; lam /= 2; }
+    const done = Math.abs(nx.L - cur.L) < 1e-10; b = nb; cur = nx; if (done) break; }
+  H = cur.h; const V = invMat(H), ll0 = D.reduce((t, s) => t + Math.log(1 / s.x.length), 0);
+  const terms = vars.map((v, j) => { const se = V ? Math.sqrt(V[j][j]) : NaN, z = b[j] / se; return { term: v, B: b[j], SE: se, z, p: 2 * (1 - normCdfV5(Math.abs(z))), OR: Math.exp(b[j]) }; });
+  return { terms, b, ll: cur.L, ll0, r2: 1 - cur.L / ll0, n: D.length }; }
+
+function posControl(rows, P, lock) {
+  if (!lock || !lock.predicted) return null; const cols = +S.tasks.cols || 5;
+  const U = Object.fromEntries(lock.predicted.map(x => [x.product, x.utility]));
+  if (P.some(p => typeof U[p.name] !== 'number')) return { error: 'The locked prediction has no utility for every product, so the position-controlled test needs a new lock.' };
+  const valid = rows.filter(x => x.choice && x.order), after = valid.filter(x => !x.at || x.at > lock.at), pre = valid.length - after.length;
+  if (after.length < 20) return { error: `Only ${after.length} storefront trials ran after the prediction was locked; the position-controlled test needs at least 20.`, pre };
+  const pages = after.map(x => { const ids = x.order.split(' | '); return { ids, chosen: ids.indexOf(x.choice), alts: ids.map((id, i) => ({ id, row: Math.floor(i / cols) + 1, col: i % cols + 1 })) }; }).filter(p => p.chosen >= 0);
+  const nRows = Math.max(...pages.flatMap(p => p.alts.map(a => a.row)));
+  const posVars = [...Array.from({ length: nRows - 1 }, (_, r) => 'row_' + (r + 1)), ...Array.from({ length: cols - 1 }, (_, c) => 'col_' + (c + 1))];
+  const posX = a => posVars.map(v => v.startsWith('row_') ? +(a.row === +v.slice(4)) : +(a.col === +v.slice(4)));
+  const base = clogitFit(pages.map(p => ({ chosen: p.chosen, x: p.alts.map(a => [U[a.id]]) })), ['Locked utility']);
+  const full = clogitFit(pages.map(p => ({ chosen: p.chosen, x: p.alts.map(a => [U[a.id], ...posX(a)]) })), ['Locked utility', ...posVars]);
+  if (base.error || full.error) return { error: base.error || full.error, pre };
+  const hit = bb => pages.filter(p => { const s = p.alts.map(a => [U[a.id], ...posX(a)].reduce((t, v, j) => t + v * (bb[j] || 0), 0)); return s.indexOf(Math.max(...s)) === p.chosen; }).length / pages.length;
+  const hitBase = hit([1]), hitFull = hit(full.b);
+  // Position-balanced share: a product's choice rate in each page slot it appeared in, averaged over slots
+  const cell = {}; pages.forEach(p => p.alts.forEach((a, i) => { const k = a.id + '|' + (i + 1); cell[k] = cell[k] || [0, 0]; cell[k][1]++; if (i === p.chosen) cell[k][0]++; }));
+  const balanced = P.map(pr => { const r = Object.entries(cell).filter(([k]) => k.split('|')[0] === pr.name).map(([, v]) => v[0] / v[1]); return r.length ? r.reduce((a, c) => a + c, 0) / r.length : 0; });
+  const util = P.map(p => U[p.name]), fav = P[util.indexOf(Math.max(...util))].name;
+  const away = pages.filter(p => p.ids[0] !== fav), awayShare = P.map(pr => away.length ? away.filter(p => p.ids[p.chosen] === pr.name).length / away.length : 0);
+  const tl = pages.filter(p => p.ids[0] === fav);
+  return { n: pages.length, pre, base, full, hitBase, hitFull, balanced, rhoBalanced: E.spearman(util, balanced), fav,
+    favTopLeft: { n: tl.length, share: tl.length ? tl.filter(p => p.ids[p.chosen] === fav).length / tl.length : null },
+    favAway: { n: away.length, share: away.length ? away.filter(p => p.ids[p.chosen] === fav).length / away.length : null, rho: E.spearman(util, awayShare) },
+    ref: 'bottom row, last column' }; }
+
+function posTermLabel(t) { return t === 'Locked utility' ? 'Locked conjoint utility' : t.startsWith('row_') ? `Row ${t.slice(4)} (vs bottom row)` : t.startsWith('col_') ? `Column ${t.slice(4)} (vs last column)` : t; }
+
+function posControlSummaryHTML(a) { const c = a.posctl; if (!c) return ''; if (c.error) return `<div class="sumq">Does it still predict once page position is controlled for?</div><p class="hint">${esc(c.error)}</p>`;
+  const u = c.full.terms[0], ok = u.p < SIG && u.B > 0;
+  return `<div class="sumq">Does it still predict once page position is controlled for?</div><p><span class="verdict ${ok ? 'ok' : 'no'}">${ok ? 'Yes' : 'No'}.</span> Holding page position constant, each extra point of locked conjoint utility multiplied the odds of being bought by ${u.OR.toFixed(2)} (${pTxt(u.p)}; ${c.n} trials after the lock). With position added, the model picks the actual choice in ${(100 * c.hitFull).toFixed(0)}% of trials (conjoint alone: ${(100 * c.hitBase).toFixed(0)}%; chance ${(100 / S.val.products.length).toFixed(0)}%).</p>
+    <p class="hint">Checks: position-balanced shares match the prediction at ρ = ${c.rhoBalanced.toFixed(2)}. When the predicted favourite ${esc(c.fav)} was not top-left, it was still bought in ${c.favAway.share == null ? '—' : (100 * c.favAway.share).toFixed(0) + '%'} of ${c.favAway.n} trials${c.favTopLeft.n ? ` (top-left: ${(100 * c.favTopLeft.share).toFixed(0)}% of ${c.favTopLeft.n})` : ''}.${c.pre ? ` ${c.pre} trial(s) run before the lock are left out.` : ''}</p>`; }
+
+function posControlTableHTML(a) { const c = a.posctl; if (!c || c.error) return '';
+  const tr = (m, lab) => m.terms.map((t, i) => `<tr class="${t.p < .05 ? 'sig' : ''}">${i === 0 ? `<td rowspan="${m.terms.length}">${lab}</td>` : ''}<td>${esc(posTermLabel(t.term))}</td><td class="num">${fmt(t.B)}</td><td class="num">${fmt(t.SE)}</td><td class="num">${fmt(t.z, 2)}</td><td class="num">${fmtP(t.p)}</td><td class="num">${fmt(t.OR)}</td></tr>`).join('');
+  return `<h3>Position-controlled test: locked prediction + page position</h3><p class="hint">Conditional logit on the ${c.n} storefront trials run after the lock${c.pre ? ` (${c.pre} earlier trial(s) left out)` : ''}. Reference: ${c.ref}. McFadden pseudo-R²: conjoint alone ${fmt(c.base.r2)}, with position ${fmt(c.full.r2)}. Picks the actual choice: ${(100 * c.hitBase).toFixed(1)}% → ${(100 * c.hitFull).toFixed(1)}%.</p>
+    <table><tr><th>Model</th><th>Term</th><th class="num">B</th><th class="num">S.E.</th><th class="num">z</th><th class="num">Sig.</th><th class="num">Odds ratio</th></tr>${tr(c.base, 'Conjoint only')}${tr(c.full, 'Conjoint + position')}</table>
+    <table><tr><th>Product</th><th class="num">Locked utility</th><th class="num">Position-balanced share</th></tr>${S.val.products.map((p, i) => `<tr><td>${esc(p.name)}</td><td class="num">${fmt(a.lock.predicted.find(x => x.product === p.name)?.utility)}</td><td class="num">${(100 * c.balanced[i]).toFixed(1)}%</td></tr>`).join('')}</table>
+    <p class="hint">Position-balanced share = the product's pick rate in each page slot it appeared in, averaged over slots (ρ with the prediction = ${fmt(c.rhoBalanced)}). Predicted favourite ${esc(c.fav)}: bought in ${c.favTopLeft.n ? (100 * c.favTopLeft.share).toFixed(1) + '% of ' + c.favTopLeft.n + ' top-left trials' : 'no top-left trials'} and ${c.favAway.share == null ? '—' : (100 * c.favAway.share).toFixed(1) + '%'} of the ${c.favAway.n} others (ρ on those trials = ${fmt(c.favAway.rho)}).</p>`; }
+
+function posControlRows() { const out = []; expUnits().forEach(u => { const a = S.fits[u.key], c = a?.posctl; if (!c) return; if (c.error) { out.push({ Run: u.label, Model: '', Term: '', Note: c.error }); return; }
+  [['Conjoint only', c.base], ['Conjoint + position', c.full]].forEach(([lab, m]) => m.terms.forEach(t => out.push({ Run: u.label, Model: lab, Term: posTermLabel(t.term), B: t.B, SE: t.SE, z: t.z, p: t.p, OddsRatio: t.OR, PseudoR2: m.r2, HitRatePct: +(100 * (lab === 'Conjoint only' ? c.hitBase : c.hitFull)).toFixed(2), TrialsAfterLock: c.n, TrialsBeforeLockLeftOut: c.pre })));
+  S.val.products.forEach((p, i) => out.push({ Run: u.label, Model: 'Check: position-balanced share', Term: p.name, B: '', SE: '', z: '', p: '', OddsRatio: '', PseudoR2: '', HitRatePct: +(100 * c.balanced[i]).toFixed(2), TrialsAfterLock: c.n, TrialsBeforeLockLeftOut: c.pre, Note: i === 0 ? `rho with prediction = ${c.rhoBalanced.toFixed(4)}` : '' }));
+  out.push({ Run: u.label, Model: 'Check: favourite not top-left', Term: c.fav, B: '', SE: '', z: '', p: '', OddsRatio: '', PseudoR2: '', HitRatePct: c.favAway.share == null ? '' : +(100 * c.favAway.share).toFixed(2), TrialsAfterLock: c.favAway.n, TrialsBeforeLockLeftOut: c.pre, Note: `top-left: ${c.favTopLeft.n ? (100 * c.favTopLeft.share).toFixed(2) + '% of ' + c.favTopLeft.n : 'none'}; rho on non-top-left trials = ${c.favAway.rho == null ? '' : c.favAway.rho.toFixed(4)}` }); }); return out; }
+
+(function initPosControl() {
+  const _aa = acesAnalyse; acesAnalyse = function (u, out, R, P) { _aa(u, out, R, P); const all = Object.values(R.store || {}); if (all.length && R.lock) out.posctl = posControl(all, P, R.lock); };
+  const _ah = acesResultsHTML; acesResultsHTML = function (a) { return _ah(a) + posControlTableHTML(a); };
+  if (typeof modelSummaryHTML === 'function') { const _ms = modelSummaryHTML; modelSummaryHTML = function (a) { const h = _ms(a), add = posControlSummaryHTML(a); if (!add) return h; const i = h.lastIndexOf('<p class="hint">Separate ranking task'); return i > 0 ? h.slice(0, i) + add + h.slice(i) : h.replace(/<\/div>$/, add + '</div>'); }; }
+})();
 
 (async () => { await IDB.open(); const s = await IDB.get('state'); if (s) S = { ...DEFAULT(), ...s }; presets = (await IDB.get('presets')) || {}; try { keys = JSON.parse(localStorage.getItem('conjointLabV5.keys') || '{}'); } catch (e) {} if (S.settings.assistModel === 'openai/gpt-4o-mini') S.settings.assistModel = 'claude-opus-5-5'; S.val.products.forEach(p => { if (p.source) p.source = ''; }); renderPresets(); syncAll(); initHelperSelect(); initV54(); initV54b(); verifyInit(); guideInit(); launchInit(); })();
 
